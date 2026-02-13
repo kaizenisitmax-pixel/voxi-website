@@ -14,38 +14,38 @@ import {
 const features = [
   {
     icon: Camera,
-    title: "Fotografla",
+    title: "Fotoğrafla",
     description:
-      "Odanin bir fotografini cek. Yapay zeka gerisini halletsin.",
+      "Odanın bir fotoğrafını çek. Yapay zeka gerisini halletsin.",
   },
   {
     icon: Sparkles,
     title: "AI Tasarla",
     description:
-      "Stil tercihini sec, saniyeler icinde profesyonel tasarim al.",
+      "Stil tercihini seç, saniyeler içinde profesyonel tasarım al.",
   },
   {
     icon: Layers,
-    title: "Karsilastir",
+    title: "Karşılaştır",
     description:
-      "Once ve sonra gorunumlerini yan yana kiyasla.",
+      "Önce ve sonra görünümlerini yan yana kıyasla.",
   },
 ];
 
 const testimonials = [
   {
-    name: "Ayse K.",
-    text: "Salon tasarimimi 30 saniyede degistirdi. Inanamadim!",
+    name: "Ayşe K.",
+    text: "Salon tasarımımı 30 saniyede değiştirdi. İnanamadım!",
     rating: 5,
   },
   {
     name: "Mehmet D.",
-    text: "Mimarima gosterdim, ayni tasarimi uyguladik. Muhtesem.",
+    text: "Mimarıma gösterdim, aynı tasarımı uyguladık. Muhteşem.",
     rating: 5,
   },
   {
     name: "Zeynep A.",
-    text: "Her odami tek tek denedim. Basit ve hizli.",
+    text: "Her odamı tek tek denedim. Basit ve hızlı.",
     rating: 5,
   },
 ];
@@ -64,7 +64,7 @@ export function LandingContent() {
               variant="default"
               className="h-10 rounded-xl bg-accent-black px-6 text-sm font-medium text-white hover:bg-accent-black/90 btn-press"
             >
-              Giris Yap
+              Giriş Yap
             </Button>
           </Link>
         </div>
@@ -76,24 +76,24 @@ export function LandingContent() {
           <div className="mx-auto max-w-2xl text-center">
             <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-border-light bg-white px-4 py-2 text-sm text-text-secondary">
               <Sparkles className="h-4 w-4 text-text-tertiary" />
-              <span>Hayal Et &middot; G&ouml;r &middot; Yapt&#305;r</span>
+              <span>Hayal Et · Gör · Yaptır</span>
             </div>
 
             <h1 className="text-4xl font-bold leading-tight tracking-tight text-text-primary md:text-6xl md:leading-tight">
               Hayal et,
               <br />
-              VOXI tasarlasin.
+              VOXI tasarlasın.
             </h1>
 
             <p className="mx-auto mt-6 max-w-lg text-lg text-text-secondary md:text-xl">
-              Odanin bir fotografini yukle, istedigin tarzi sec. VOXI
-              saniyeler icinde profesyonel ic mekan tasarimi olusturur.
+              Odanın bir fotoğrafını yükle, istediğin tarzı seç. VOXI
+              saniyeler içinde profesyonel iç mekan tasarımı oluşturur.
             </p>
 
             <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
               <Link href="/giris">
                 <Button className="h-12 w-full rounded-xl bg-accent-black px-8 text-base font-medium text-white hover:bg-accent-black/90 btn-press sm:w-auto">
-                  Ucretsiz Dene
+                  Ücretsiz Dene
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </Link>
@@ -102,13 +102,13 @@ export function LandingContent() {
                   variant="outline"
                   className="h-12 w-full rounded-xl border-border-light bg-white px-8 text-base font-medium text-text-primary hover:bg-white/80 btn-press sm:w-auto"
                 >
-                  Nasil Calisir?
+                  Nasıl Çalışır?
                 </Button>
               </Link>
             </div>
 
             <p className="mt-4 text-sm text-text-tertiary">
-              Kredi karti gerektirmez. Ilk 3 tasarim ucretsiz.
+              Kredi kartı gerektirmez. İlk 3 tasarım ücretsiz.
             </p>
           </div>
         </div>
@@ -122,7 +122,7 @@ export function LandingContent() {
                   <Sparkles className="h-8 w-8 text-text-tertiary" />
                 </div>
                 <p className="text-sm text-text-tertiary">
-                  Once / Sonra onizleme gelecek
+                  Önce / Sonra önizleme gelecek
                 </p>
               </div>
             </div>
@@ -135,10 +135,10 @@ export function LandingContent() {
         <div className="mx-auto max-w-6xl px-4 py-20 md:py-28">
           <div className="mx-auto max-w-2xl text-center">
             <h2 className="text-3xl font-bold text-text-primary md:text-4xl">
-              Nasil calisir?
+              Nasıl çalışır?
             </h2>
             <p className="mt-4 text-lg text-text-secondary">
-              Uc basit adimda hayalindeki evi tasarla.
+              Üç basit adımda hayalindeki evi tasarla.
             </p>
           </div>
 
@@ -171,10 +171,10 @@ export function LandingContent() {
         <div className="mx-auto max-w-6xl px-4 py-20 md:py-28">
           <div className="mx-auto max-w-2xl text-center">
             <h2 className="text-3xl font-bold text-text-primary md:text-4xl">
-              Kullanicilar ne diyor?
+              Kullanıcılar ne diyor?
             </h2>
             <p className="mt-4 text-lg text-text-secondary">
-              Binlerce kullanici VOXI ile evlerini donusturdu.
+              Binlerce kullanıcı VOXI ile evlerini dönüştürdü.
             </p>
           </div>
 
@@ -209,14 +209,14 @@ export function LandingContent() {
         <div className="mx-auto max-w-6xl px-4 py-20 md:py-28">
           <div className="mx-auto max-w-2xl text-center">
             <h2 className="text-3xl font-bold text-text-primary md:text-4xl">
-              Evini donusturmeye hazir misin?
+              Evini dönüştürmeye hazır mısın?
             </h2>
             <p className="mt-4 text-lg text-text-secondary">
-              Hemen basla, ilk 3 tasarimin ucretsiz.
+              Hemen başla, ilk 3 tasarımın ücretsiz.
             </p>
             <Link href="/giris">
               <Button className="mt-8 h-12 rounded-xl bg-accent-black px-8 text-base font-medium text-white hover:bg-accent-black/90 btn-press">
-                Hemen Basla
+                Hemen Başla
                 <ChevronRight className="ml-1 h-4 w-4" />
               </Button>
             </Link>
@@ -229,7 +229,7 @@ export function LandingContent() {
         <div className="mx-auto max-w-6xl px-4 py-8">
           <div className="flex flex-col items-center justify-between gap-4 md:flex-row">
             <p className="text-sm text-text-tertiary">
-              2025 VOXI. Tum haklari saklidir.
+              2025 VOXI. Tüm hakları saklıdır.
             </p>
             <div className="flex gap-6">
               <Link
@@ -242,13 +242,13 @@ export function LandingContent() {
                 href="#"
                 className="text-sm text-text-tertiary hover:text-text-primary transition-colors"
               >
-                Kullanim Sartlari
+                Kullanım Şartları
               </Link>
               <Link
                 href="#"
                 className="text-sm text-text-tertiary hover:text-text-primary transition-colors"
               >
-                Iletisim
+                İletişim
               </Link>
             </div>
           </div>

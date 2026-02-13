@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "VOXI - Hayal Et \u00b7 G\u00f6r \u00b7 Yapt\u0131r",
   description:
-    "VOXI ile evini hayal et, yapay zeka ile gor, profesyonellerle yaptir. AI destekli ic mekan tasarim platformu.",
+    "VOXI ile evini hayal et, yapay zeka ile gör, profesyonellerle yaptır. AI destekli iç mekan tasarım platformu.",
 };
 
 export const viewport: Viewport = {

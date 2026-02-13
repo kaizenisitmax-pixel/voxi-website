@@ -16,15 +16,17 @@ import {
   Home,
 } from "lucide-react";
 
-// Mock data - gercek uygulamada Supabase'den gelecek
+// Mock data — gerçek uygulamada Supabase'den gelecek
 const mockDesign = {
   id: "1",
-  title: "Salon - Modern Minimalist",
+  title: "Salon — Modern Minimalist",
   style: "Modern Minimalist",
   room: "Salon",
   date: "12 Ocak 2025",
-  beforeImage: "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=800&h=600&fit=crop",
-  afterImage: "https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?w=800&h=600&fit=crop",
+  beforeImage:
+    "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=800&h=600&fit=crop",
+  afterImage:
+    "https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?w=800&h=600&fit=crop",
   liked: false,
 };
 
@@ -38,7 +40,7 @@ export default function TasarimDetailPage({
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-6">
-      {/* Header */}
+      {/* Başlık */}
       <div className="mb-6 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Link href="/app/kutuphane">
@@ -58,30 +60,30 @@ export default function TasarimDetailPage({
         </button>
       </div>
 
-      {/* Before / After Slider */}
+      {/* Önce / Sonra Slider */}
       <BeforeAfterSlider
         beforeSrc={design.beforeImage}
         afterSrc={design.afterImage}
-        beforeLabel="Once"
+        beforeLabel="Önce"
         afterLabel="Sonra"
         className="mb-6"
       />
 
-      {/* Action Buttons */}
+      {/* Aksiyon Butonları */}
       <div className="mb-6 grid grid-cols-3 gap-3">
         <Button
           variant="outline"
           className="h-11 rounded-xl border-border-light bg-white text-sm font-medium text-text-primary hover:bg-warm-bg btn-press"
         >
           <Download className="mr-2 h-4 w-4" />
-          Indir
+          İndir
         </Button>
         <Button
           variant="outline"
           className="h-11 rounded-xl border-border-light bg-white text-sm font-medium text-text-primary hover:bg-warm-bg btn-press"
         >
           <Share2 className="mr-2 h-4 w-4" />
-          Paylas
+          Paylaş
         </Button>
         <Button
           variant="outline"
@@ -92,10 +94,10 @@ export default function TasarimDetailPage({
         </Button>
       </div>
 
-      {/* Details Card */}
+      {/* Detay Kartı */}
       <div className="rounded-2xl border border-border-light bg-white p-5 shadow-sm">
         <h2 className="mb-4 text-sm font-semibold text-text-primary">
-          Tasarim Detaylari
+          Tasarım Detayları
         </h2>
         <div className="space-y-3">
           <div className="flex items-center gap-3">
@@ -114,7 +116,7 @@ export default function TasarimDetailPage({
               <Tag className="h-4 w-4 text-text-tertiary" />
             </div>
             <div>
-              <p className="text-xs text-text-tertiary">Tasarim Stili</p>
+              <p className="text-xs text-text-tertiary">Tasarım Stili</p>
               <p className="text-sm font-medium text-text-primary">
                 {design.style}
               </p>
@@ -125,7 +127,7 @@ export default function TasarimDetailPage({
               <Calendar className="h-4 w-4 text-text-tertiary" />
             </div>
             <div>
-              <p className="text-xs text-text-tertiary">Olusturma Tarihi</p>
+              <p className="text-xs text-text-tertiary">Oluşturma Tarihi</p>
               <p className="text-sm font-medium text-text-primary">
                 {design.date}
               </p>
@@ -145,12 +147,12 @@ export default function TasarimDetailPage({
         </div>
       </div>
 
-      {/* Regenerate CTA */}
+      {/* Yeni Tasarım CTA */}
       <div className="mt-6">
-        <Link href="/app/tasarla">
+        <Link href="/app">
           <Button className="h-12 w-full rounded-xl bg-accent-black text-base font-medium text-white hover:bg-accent-black/90 btn-press">
             <Sparkles className="mr-2 h-4 w-4" />
-            Yeni Tasarim Olustur
+            Yeni Tasarım Oluştur
           </Button>
         </Link>
       </div>

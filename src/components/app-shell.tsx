@@ -4,22 +4,22 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
-  Home,
   Sparkles,
   FolderOpen,
-  User,
+  MessageCircle,
+  UserCircle,
   LogOut,
-  Plus,
+  Settings,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
 import { useRef } from "react";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 
-const navItems = [
-  { href: "/app", icon: Home, label: "Ana Sayfa" },
-  { href: "/app/kutuphane", icon: FolderOpen, label: "Kutuphane" },
-  { href: "/app/tasarla", icon: Plus, label: "Tasarla", primary: true },
+const tabs = [
+  { href: "/app", icon: Sparkles, label: "Tasarla" },
+  { href: "/app/kutuphane", icon: FolderOpen, label: "Kütüphane" },
+  { href: "/app/sohbetler", icon: MessageCircle, label: "Sohbetler" },
+  { href: "/app/profil", icon: UserCircle, label: "Profil" },
 ];
 
 export function AppShell({
@@ -49,110 +49,102 @@ export function AppShell({
     user.user_metadata?.full_name ||
     user.email?.split("@")[0] ||
     user.phone ||
-    "Kullanici";
+    "Kullanıcı";
+
+  const isActiveTab = (href: string) => {
+    if (href === "/app") return pathname === "/app";
+    return pathname.startsWith(href);
+  };
 
   return (
-    <div className="flex min-h-screen flex-col bg-warm-bg">
-      {/* Top Header - Desktop & Mobile */}
-      <header className="sticky top-0 z-50 border-b border-border-light bg-white/80 backdrop-blur-xl">
-        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
-          <Link href="/app" className="text-lg font-bold tracking-tight text-text-primary">
+    <div className="flex min-h-screen bg-warm-bg">
+      {/* ── Desktop Sidebar ── */}
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-[220px] flex-col border-r border-border-light bg-white md:flex">
+        {/* Logo */}
+        <div className="flex h-16 items-center px-6">
+          <Link
+            href="/app"
+            className="text-lg font-bold tracking-tight text-text-primary"
+          >
             VOXI
           </Link>
+        </div>
 
-          {/* Desktop Nav */}
-          <nav className="hidden items-center gap-1 md:flex">
-            {navItems.map((item) => (
-              <Link key={item.href} href={item.href}>
-                <Button
-                  variant={pathname === item.href ? "secondary" : "ghost"}
+        {/* Nav Items */}
+        <nav className="flex-1 space-y-1 px-3 pt-2">
+          {tabs.map((tab) => {
+            const active = isActiveTab(tab.href);
+            return (
+              <Link key={tab.href} href={tab.href}>
+                <div
                   className={cn(
-                    "h-9 gap-2 rounded-lg text-sm font-medium",
-                    pathname === item.href
+                    "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
+                    active
                       ? "bg-warm-bg text-text-primary"
-                      : "text-text-secondary hover:text-text-primary"
+                      : "text-text-secondary hover:bg-warm-bg/60 hover:text-text-primary"
                   )}
                 >
-                  <item.icon className="h-4 w-4" />
-                  {item.label}
-                </Button>
+                  <tab.icon className={cn("h-[18px] w-[18px]", active ? "text-text-primary" : "text-text-tertiary")} />
+                  {tab.label}
+                </div>
               </Link>
-            ))}
-          </nav>
+            );
+          })}
+        </nav>
 
-          {/* User Menu */}
-          <div className="flex items-center gap-3">
-            <div className="hidden items-center gap-2 md:flex">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-black text-xs font-medium text-white">
-                {displayName.charAt(0).toUpperCase()}
-              </div>
-              <span className="text-sm text-text-secondary">{displayName}</span>
+        {/* Sidebar Footer */}
+        <div className="border-t border-border-light p-3">
+          <div className="flex items-center gap-3 rounded-xl px-3 py-2">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-black text-xs font-medium text-white">
+              {displayName.charAt(0).toUpperCase()}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-text-primary">
+                {displayName}
+              </p>
             </div>
             <button
               onClick={handleLogout}
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-text-tertiary hover:bg-warm-bg hover:text-text-primary transition-colors"
-              title="Cikis Yap"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-text-tertiary hover:bg-warm-bg hover:text-text-primary transition-colors"
+              title="Çıkış Yap"
             >
-              <LogOut className="h-4 w-4" />
+              <LogOut className="h-3.5 w-3.5" />
             </button>
           </div>
         </div>
-      </header>
+      </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 pb-20 md:pb-0">{children}</main>
+      {/* ── Main Content ── */}
+      <main className="flex-1 pb-20 md:pb-0 md:pl-[220px]">
+        {children}
+      </main>
 
-      {/* Mobile Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border-light bg-white/90 backdrop-blur-xl md:hidden">
-        <div className="mx-auto flex h-16 max-w-md items-center justify-around px-2">
-          {navItems.map((item) => {
-            const isActive = pathname === item.href;
-
-            if (item.primary) {
-              return (
-                <Link key={item.href} href={item.href}>
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent-black btn-press">
-                    <item.icon className="h-5 w-5 text-white" />
-                  </div>
-                </Link>
-              );
-            }
-
+      {/* ── Mobile Bottom Tab Bar ── */}
+      <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-border-light bg-white/95 backdrop-blur-xl md:hidden">
+        <div className="mx-auto flex h-[72px] max-w-md items-end justify-around px-2 pb-2">
+          {tabs.map((tab) => {
+            const active = isActiveTab(tab.href);
             return (
-              <Link key={item.href} href={item.href}>
-                <div className="flex flex-col items-center gap-1 px-3 py-1">
-                  <item.icon
+              <Link key={tab.href} href={tab.href} className="w-16">
+                <div className="flex flex-col items-center gap-0.5 pt-2">
+                  <tab.icon
                     className={cn(
-                      "h-5 w-5 transition-colors",
-                      isActive ? "text-text-primary" : "text-text-tertiary"
+                      "h-[22px] w-[22px] transition-colors",
+                      active ? "text-text-primary" : "text-text-tertiary"
                     )}
                   />
                   <span
                     className={cn(
                       "text-[10px] font-medium transition-colors",
-                      isActive ? "text-text-primary" : "text-text-tertiary"
+                      active ? "text-text-primary" : "text-text-tertiary"
                     )}
                   >
-                    {item.label}
+                    {tab.label}
                   </span>
                 </div>
               </Link>
             );
           })}
-
-          {/* Profile in bottom nav */}
-          <Link href="/app">
-            <div className="flex flex-col items-center gap-1 px-3 py-1">
-              <User
-                className={cn(
-                  "h-5 w-5 text-text-tertiary"
-                )}
-              />
-              <span className="text-[10px] font-medium text-text-tertiary">
-                Profil
-              </span>
-            </div>
-          </Link>
         </div>
       </nav>
     </div>

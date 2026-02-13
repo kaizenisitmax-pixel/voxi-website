@@ -15,7 +15,7 @@ interface BeforeAfterSliderProps {
 export function BeforeAfterSlider({
   beforeSrc,
   afterSrc,
-  beforeLabel = "Once",
+  beforeLabel = "Önce",
   afterLabel = "Sonra",
   className,
 }: BeforeAfterSliderProps) {
