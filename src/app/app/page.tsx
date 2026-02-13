@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,6 +14,7 @@ import {
   Info,
   AlertCircle,
   MessageCircle,
+  ClipboardList,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -21,33 +22,43 @@ import {
   serviceTypes,
   getStyles,
   getTools,
+  getDetailQuestions,
   photoTips,
 } from "@/lib/design-data";
 import {
   getModelForDesign,
   estimateProcessingTime,
   calculateModelCost,
+  buildEnhancedPrompt,
   REPLICATE_MODELS,
 } from "@/lib/replicate-model-mapping";
-import type { StyleOption } from "@/lib/design-data";
+import type { StyleOption, QuestionGroup } from "@/lib/design-data";
 
-type Step = "category" | "service" | "style" | "iklimlendirme-info" | "photo" | "tool" | "generating";
+type Step =
+  | "category"
+  | "service"
+  | "style"
+  | "iklimlendirme-info"
+  | "photo"
+  | "tool"
+  | "details"
+  | "generating";
 
 const stepLabels: Record<string, { num: number; title: string }> = {
   category: { num: 1, title: "Kategori" },
-  service: { num: 1, title: "Hizmet Tipi" },
-  style: { num: 2, title: "Stil" },
-  "iklimlendirme-info": { num: 3, title: "Bilgi" },
-  photo: { num: 3, title: "Fotoğraf" },
-  tool: { num: 4, title: "Araç" },
+  service: { num: 2, title: "Hizmet Tipi" },
+  style: { num: 3, title: "Stil" },
+  "iklimlendirme-info": { num: 4, title: "Bilgi" },
+  photo: { num: 4, title: "Fotoğraf" },
+  tool: { num: 5, title: "Araç" },
+  details: { num: 6, title: "Detaylar" },
 };
 
-// Step order changes dynamically based on service type
 function getStepOrder(serviceType: string | null): Step[] {
   if (serviceType === "iklimlendirme") {
     return ["category", "service", "style", "iklimlendirme-info"];
   }
-  return ["category", "service", "style", "photo", "tool", "generating"];
+  return ["category", "service", "style", "photo", "tool", "details", "generating"];
 }
 
 export default function TasarlaPage() {
@@ -60,6 +71,10 @@ export default function TasarlaPage() {
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [tool, setTool] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+
+  // Details state
+  const [details, setDetails] = useState<Record<string, string[]>>({});
+  const [freeText, setFreeText] = useState("");
 
   // Generation state
   const [generationError, setGenerationError] = useState<string | null>(null);
@@ -77,6 +92,10 @@ export default function TasarlaPage() {
   const currentStepMeta = step !== "generating" ? stepLabels[step] : null;
   const availableStyles = getStyles(category, service);
   const availableTools = getTools(service);
+  const detailQuestions = getDetailQuestions(category, service);
+
+  // Total step count for indicator
+  const totalSteps = service === "iklimlendirme" ? 4 : 6;
 
   // Cleanup polling/timer on unmount
   useEffect(() => {
@@ -116,7 +135,48 @@ export default function TasarlaPage() {
     }
   }, []);
 
-  // Real AI generation: POST to /api/generate, then poll /api/generate/status
+  // Toggle detail chip selection
+  const toggleDetail = useCallback(
+    (groupId: string, option: string, multiple: boolean) => {
+      setDetails((prev) => {
+        const current = prev[groupId] || [];
+        if (multiple) {
+          // Multi-select: toggle
+          const next = current.includes(option)
+            ? current.filter((o) => o !== option)
+            : [...current, option];
+          return { ...prev, [groupId]: next };
+        } else {
+          // Single-select: replace or deselect
+          const next = current[0] === option ? [] : [option];
+          return { ...prev, [groupId]: next };
+        }
+      });
+    },
+    []
+  );
+
+  // Build customPrompt from quick selections + free text
+  const customPrompt = useMemo(() => {
+    const parts: string[] = [];
+    for (const selections of Object.values(details)) {
+      if (selections.length > 0) {
+        parts.push(selections.join(", "));
+      }
+    }
+    if (freeText.trim()) {
+      parts.push(freeText.trim());
+    }
+    return parts.join(", ");
+  }, [details, freeText]);
+
+  // Preview prompt (computed live)
+  const previewPrompt = useMemo(() => {
+    if (!category || !service || !style || !tool) return "";
+    return buildEnhancedPrompt(service, category, style, tool, customPrompt || undefined);
+  }, [category, service, style, tool, customPrompt]);
+
+  // Real AI generation
   const handleGenerate = async () => {
     if (!photoFile || !category || !service || !style || !tool) return;
 
@@ -124,7 +184,6 @@ export default function TasarlaPage() {
     setGenerationError(null);
     setElapsedSeconds(0);
 
-    // Show model info in UI
     const modelConfig = getModelForDesign(service, category, style);
     const finalModel = modelConfig || REPLICATE_MODELS.interior_design;
     setGenerationInfo({
@@ -133,25 +192,25 @@ export default function TasarlaPage() {
       estimatedCost: calculateModelCost(finalModel),
     });
 
-    // Start elapsed timer
     timerRef.current = setInterval(() => {
       setElapsedSeconds((prev) => prev + 1);
     }, 1000);
 
     try {
-      // 1. Start generation
       const formData = new FormData();
       formData.append("image", photoFile);
       formData.append("category", category);
       formData.append("serviceType", service);
       formData.append("style", style);
       formData.append("tool", tool);
+      if (customPrompt) {
+        formData.append("customPrompt", customPrompt);
+      }
 
       const startRes = await fetch("/api/generate", {
         method: "POST",
         body: formData,
       });
-
       const startData = await startRes.json();
 
       if (!startRes.ok) {
@@ -160,7 +219,6 @@ export default function TasarlaPage() {
 
       const { designId, predictionId } = startData;
 
-      // 2. Poll for status
       const pollStatus = async (): Promise<void> => {
         try {
           const statusRes = await fetch(
@@ -169,31 +227,23 @@ export default function TasarlaPage() {
           const statusData = await statusRes.json();
 
           if (statusData.status === "completed") {
-            // Stop polling & timer
             if (pollingRef.current) clearInterval(pollingRef.current);
             if (timerRef.current) clearInterval(timerRef.current);
-            // Redirect to design detail
             router.push(`/app/tasarim/${designId}`);
             return;
           }
-
           if (statusData.status === "failed") {
             if (pollingRef.current) clearInterval(pollingRef.current);
             if (timerRef.current) clearInterval(timerRef.current);
             setGenerationError(statusData.error || "Tasarim basarisiz oldu");
             return;
           }
-
-          // Still processing, continue polling
         } catch {
-          // Network error, keep polling
           console.error("Polling error, retrying...");
         }
       };
 
-      // Poll every 2 seconds
       pollingRef.current = setInterval(pollStatus, 2000);
-      // Also check immediately after a short delay
       setTimeout(pollStatus, 1000);
     } catch (error) {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -225,16 +275,16 @@ export default function TasarlaPage() {
             </h1>
           </div>
 
-          {/* Numbered step badges */}
-          <div className="mb-8 flex items-center justify-center gap-2">
-            {(service === "iklimlendirme" ? [1, 2, 3] : [1, 2, 3, 4]).map((num, i, arr) => {
+          {/* Numbered step badges: 1-6 (or 1-4 for iklimlendirme) */}
+          <div className="mb-8 flex items-center justify-center gap-1.5 md:gap-2">
+            {Array.from({ length: totalSteps }, (_, i) => i + 1).map((num, i) => {
               const active = currentStepMeta && currentStepMeta.num >= num;
               const current = currentStepMeta?.num === num;
               return (
-                <div key={num} className="flex items-center gap-2">
+                <div key={num} className="flex items-center gap-1.5 md:gap-2">
                   <div
                     className={cn(
-                      "flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold transition-colors",
+                      "flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-semibold transition-colors md:h-8 md:w-8 md:text-xs",
                       current
                         ? "bg-accent-black text-white"
                         : active
@@ -244,10 +294,10 @@ export default function TasarlaPage() {
                   >
                     {num}
                   </div>
-                  {i < arr.length - 1 && (
+                  {i < totalSteps - 1 && (
                     <div
                       className={cn(
-                        "h-0.5 w-6 rounded-full transition-colors md:w-10",
+                        "h-0.5 w-4 rounded-full transition-colors md:w-8",
                         active ? "bg-accent-black" : "bg-border-light"
                       )}
                     />
@@ -267,16 +317,15 @@ export default function TasarlaPage() {
           <p className="text-sm text-text-secondary">
             Tasarım yapılacak mekanın türünü seç.
           </p>
-
-          {/* Pill buttons — yatay */}
           <div className="flex flex-wrap gap-2">
             {categories.map((cat) => (
               <button
                 key={cat.id}
                 onClick={() => {
                   setCategory(cat.id);
-                  // Kategori değiştiğinde stili sıfırla
                   setStyle(null);
+                  setDetails({});
+                  setFreeText("");
                   goNext();
                 }}
                 className={cn(
@@ -295,14 +344,13 @@ export default function TasarlaPage() {
       )}
 
       {/* ══════════════════════════════════════════
-          ADIM 1A: HİZMET TİPİ SEÇ
+          ADIM 2: HİZMET TİPİ SEÇ
          ══════════════════════════════════════════ */}
       {step === "service" && (
         <div className="space-y-6">
           <p className="text-sm text-text-secondary">
             Ne tür bir değişiklik yapmak istiyorsun?
           </p>
-
           <div className="space-y-3">
             {serviceTypes.map((svc) => (
               <button
@@ -311,6 +359,8 @@ export default function TasarlaPage() {
                   setService(svc.id);
                   setStyle(null);
                   setTool(null);
+                  setDetails({});
+                  setFreeText("");
                   goNext();
                 }}
                 className={cn(
@@ -338,15 +388,13 @@ export default function TasarlaPage() {
       )}
 
       {/* ══════════════════════════════════════════
-          ADIM 2: STİL SEÇ (DİNAMİK)
+          ADIM 3: STİL SEÇ (DİNAMİK)
          ══════════════════════════════════════════ */}
       {step === "style" && (
         <div className="space-y-6">
           <p className="text-sm text-text-secondary">
             Mekana uygulanacak tasarım dilini seç.
           </p>
-
-          {/* Horizontal scroll (mobil), grid (desktop) */}
           <div className="-mx-4 px-4 md:mx-0 md:px-0">
             <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none md:grid md:grid-cols-5 md:overflow-visible">
               {availableStyles.map((s: StyleOption) => (
@@ -397,7 +445,84 @@ export default function TasarlaPage() {
       )}
 
       {/* ══════════════════════════════════════════
-          ADIM 3: FOTOĞRAF YÜKLE
+          İKLİMLENDİRME BİLGİ
+         ══════════════════════════════════════════ */}
+      {step === "iklimlendirme-info" && (
+        <div className="space-y-6">
+          <div className="rounded-2xl border border-border-light bg-white p-8 text-center shadow-sm">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-warm-bg">
+              <Info className="h-7 w-7 text-text-tertiary" />
+            </div>
+            <h3 className="text-lg font-semibold text-text-primary">
+              AI Tasarım Yakında
+            </h3>
+            <p className="mt-3 text-sm leading-relaxed text-text-secondary">
+              İklimlendirme kategorisinde AI görsel tasarım henüz desteklenmiyor.
+              Şimdilik uzmanlarımızla iletişime geçerek projeniz için profesyonel
+              destek alabilirsiniz.
+            </p>
+          </div>
+
+          {/* İklimlendirme detay soruları (teklif talebi) */}
+          {detailQuestions.length > 0 && (
+            <div className="space-y-5">
+              <h3 className="text-sm font-semibold text-text-primary">
+                Projenizi tanımlayın
+              </h3>
+              {detailQuestions.map((group: QuestionGroup) => (
+                <div key={group.id}>
+                  <p className="mb-2 text-xs font-medium text-text-secondary">
+                    {group.label}
+                    {group.multiple && (
+                      <span className="ml-1 text-text-tertiary">(çoklu seçim)</span>
+                    )}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {group.options.map((option) => {
+                      const isSelected = (details[group.id] || []).includes(option);
+                      return (
+                        <button
+                          key={option}
+                          onClick={() => toggleDetail(group.id, option, group.multiple)}
+                          className={cn(
+                            "rounded-lg border px-3 py-1.5 text-xs font-medium transition-all btn-press",
+                            isSelected
+                              ? "border-accent-black bg-accent-black text-white"
+                              : "border-border-light bg-white text-text-primary hover:border-text-tertiary"
+                          )}
+                        >
+                          {option}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <Button
+            className="h-14 w-full rounded-xl bg-accent-black text-base font-semibold text-white hover:bg-accent-black/90 btn-press"
+            onClick={() => router.push("/app/sohbetler")}
+          >
+            <MessageCircle className="mr-2 h-5 w-5" />
+            Uzmanla İletişime Geç
+          </Button>
+          <button
+            onClick={() => {
+              setService(null);
+              setStyle(null);
+              setStep("category");
+            }}
+            className="w-full text-center text-sm text-text-tertiary hover:text-text-primary transition-colors"
+          >
+            Farklı bir hizmet tipi seç
+          </button>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════
+          ADIM 4: FOTOĞRAF YÜKLE
          ══════════════════════════════════════════ */}
       {step === "photo" && (
         <div className="space-y-6">
@@ -405,7 +530,6 @@ export default function TasarlaPage() {
             Dönüştürmek istediğin mekanın net bir fotoğrafını seç.
           </p>
 
-          {/* Context-aware ipucu kutusu */}
           {service && photoTips[service] && (
             <div className="flex items-start gap-3 rounded-xl border border-border-light bg-white p-4">
               <Info className="mt-0.5 h-4 w-4 shrink-0 text-text-tertiary" />
@@ -504,75 +628,7 @@ export default function TasarlaPage() {
       )}
 
       {/* ══════════════════════════════════════════
-          İKLİMLENDİRME BİLGİ (araç yok, AI tasarım desteklenmiyor)
-         ══════════════════════════════════════════ */}
-      {step === "iklimlendirme-info" && (
-        <div className="space-y-6">
-          <div className="rounded-2xl border border-border-light bg-white p-8 text-center shadow-sm">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-warm-bg">
-              <Info className="h-7 w-7 text-text-tertiary" />
-            </div>
-            <h3 className="text-lg font-semibold text-text-primary">
-              AI Tasarım Yakında
-            </h3>
-            <p className="mt-3 text-sm leading-relaxed text-text-secondary">
-              İklimlendirme kategorisinde AI görsel tasarım henüz desteklenmiyor.
-              Şimdilik uzmanlarımızla iletişime geçerek projeniz için profesyonel
-              destek alabilirsiniz.
-            </p>
-          </div>
-
-          {/* Özet kartı */}
-          <div className="rounded-2xl border border-border-light bg-white p-5 shadow-sm">
-            <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
-              Seçimleriniz
-            </h3>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-text-tertiary">Kategori</span>
-                <span className="font-medium text-text-primary">
-                  {categories.find((c) => c.id === category)?.label ?? "—"}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-text-tertiary">Hizmet</span>
-                <span className="font-medium text-text-primary">
-                  {serviceTypes.find((s) => s.id === service)?.label ?? "—"}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-text-tertiary">Stil</span>
-                <span className="font-medium text-text-primary">
-                  {getStyles(category, service).find((s) => s.id === style)
-                    ?.label ?? "—"}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <Button
-            className="h-14 w-full rounded-xl bg-accent-black text-base font-semibold text-white hover:bg-accent-black/90 btn-press"
-            onClick={() => router.push("/app/sohbetler")}
-          >
-            <MessageCircle className="mr-2 h-5 w-5" />
-            Uzmanla İletişime Geç
-          </Button>
-
-          <button
-            onClick={() => {
-              setService(null);
-              setStyle(null);
-              setStep("category");
-            }}
-            className="w-full text-center text-sm text-text-tertiary hover:text-text-primary transition-colors"
-          >
-            Farklı bir hizmet tipi seç
-          </button>
-        </div>
-      )}
-
-      {/* ══════════════════════════════════════════
-          ADIM 4: ARAÇ SEÇ (Dinamik — hizmet tipine göre)
+          ADIM 5: ARAÇ SEÇ
          ══════════════════════════════════════════ */}
       {step === "tool" && (
         <div className="space-y-6">
@@ -580,12 +636,12 @@ export default function TasarlaPage() {
             Ne yapmak istersiniz?
           </p>
 
-          <div className={cn(
-            "grid gap-3",
-            availableTools.length <= 2
-              ? "grid-cols-2"
-              : "grid-cols-2 md:grid-cols-5"
-          )}>
+          <div
+            className={cn(
+              "grid gap-3",
+              availableTools.length <= 2 ? "grid-cols-2" : "grid-cols-2 md:grid-cols-5"
+            )}
+          >
             {availableTools.map((t) => (
               <button
                 key={t.id}
@@ -610,6 +666,100 @@ export default function TasarlaPage() {
             ))}
           </div>
 
+          <Button
+            className="h-12 w-full rounded-xl bg-accent-black text-base font-medium text-white hover:bg-accent-black/90 btn-press"
+            disabled={!tool}
+            onClick={goNext}
+          >
+            Devam Et
+            <ArrowRight className="ml-2 h-4 w-4" />
+          </Button>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════
+          ADIM 6: TASARIM DETAYLARI (PROMPT BUILDER)
+         ══════════════════════════════════════════ */}
+      {step === "details" && (
+        <div className="space-y-6">
+          <p className="text-sm text-text-secondary">
+            Tasarımını detaylandır. Tüm seçenekler opsiyonel — hiç seçmeden de devam edebilirsin.
+          </p>
+
+          {/* Dinamik hızlı seçenek grupları */}
+          {detailQuestions.length > 0 && (
+            <div className="space-y-5">
+              {detailQuestions.map((group: QuestionGroup) => (
+                <div key={group.id}>
+                  <p className="mb-2 text-xs font-medium text-text-secondary">
+                    {group.label}
+                    {group.multiple && (
+                      <span className="ml-1 text-text-tertiary">(çoklu seçim)</span>
+                    )}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {group.options.map((option) => {
+                      const isSelected = (details[group.id] || []).includes(option);
+                      return (
+                        <button
+                          key={option}
+                          onClick={() => toggleDetail(group.id, option, group.multiple)}
+                          className={cn(
+                            "rounded-lg border px-3 py-1.5 text-xs font-medium transition-all btn-press",
+                            isSelected
+                              ? "border-accent-black bg-accent-black text-white"
+                              : "border-border-light bg-white text-text-primary hover:border-text-tertiary"
+                          )}
+                        >
+                          {option}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Serbest metin alanı */}
+          <div>
+            <p className="mb-2 text-xs font-medium text-text-secondary">
+              Eklemek İstediğin Detaylar
+            </p>
+            <textarea
+              value={freeText}
+              onChange={(e) => setFreeText(e.target.value)}
+              placeholder="Örn: Geniş pencereler, açık mutfak, bahçeye bakan teras..."
+              rows={3}
+              className="w-full rounded-xl border border-border-light bg-white px-4 py-3 text-sm text-text-primary placeholder:text-text-tertiary focus:border-accent-black focus:outline-none focus:ring-2 focus:ring-accent-black/20 resize-none"
+            />
+          </div>
+
+          {/* Prompt önizleme */}
+          {previewPrompt && (
+            <div className="rounded-xl bg-[#F0EDE8] p-4">
+              <div className="mb-2 flex items-center gap-2">
+                <ClipboardList className="h-3.5 w-3.5 text-text-tertiary" />
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
+                  Oluşan Tasarım Promptu
+                </span>
+              </div>
+              <p className="text-xs leading-relaxed text-text-secondary font-mono break-words">
+                &ldquo;{previewPrompt}&rdquo;
+              </p>
+              {/* Model info */}
+              {category && service && style && (() => {
+                const m = getModelForDesign(service, category, style);
+                const model = m || REPLICATE_MODELS.interior_design;
+                return (
+                  <p className="mt-2 text-[10px] text-text-tertiary">
+                    Model: {model.modelId.split("/").pop()} (~{estimateProcessingTime(model)}s, ${calculateModelCost(model).toFixed(3)})
+                  </p>
+                );
+              })()}
+            </div>
+          )}
+
           {/* Özet kartı */}
           <div className="rounded-2xl border border-border-light bg-white p-5 shadow-sm">
             <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
@@ -631,8 +781,7 @@ export default function TasarlaPage() {
               <div className="flex justify-between">
                 <span className="text-text-tertiary">Stil</span>
                 <span className="font-medium text-text-primary">
-                  {getStyles(category, service).find((s) => s.id === style)
-                    ?.label ?? "—"}
+                  {getStyles(category, service).find((s) => s.id === style)?.label ?? "—"}
                 </span>
               </div>
               <div className="flex justify-between">
@@ -641,40 +790,20 @@ export default function TasarlaPage() {
                   {availableTools.find((t) => t.id === tool)?.label ?? "—"}
                 </span>
               </div>
-              {/* Dynamic model info based on selections */}
-              {category && service && style && (() => {
-                const m = getModelForDesign(service, category, style);
-                const model = m || REPLICATE_MODELS.interior_design;
-                return (
-                  <>
-                    <div className="flex justify-between border-t border-border-light pt-2">
-                      <span className="text-text-tertiary">AI Model</span>
-                      <span className="font-medium text-text-primary text-xs">
-                        {model.modelId.split("/").pop()}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-text-tertiary">Tahmini Süre</span>
-                      <span className="font-medium text-text-primary">
-                        ~{estimateProcessingTime(model)}s
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-text-tertiary">Maliyet</span>
-                      <span className="font-medium text-text-primary">
-                        ${calculateModelCost(model).toFixed(3)}
-                      </span>
-                    </div>
-                  </>
-                );
-              })()}
+              {customPrompt && (
+                <div className="flex justify-between border-t border-border-light pt-2">
+                  <span className="text-text-tertiary">Detaylar</span>
+                  <span className="font-medium text-text-primary text-xs text-right max-w-[60%] truncate">
+                    {customPrompt.length > 60 ? customPrompt.slice(0, 60) + "..." : customPrompt}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 
-          {/* AI ile Tasarla butonu — h-14, tam genişlik */}
+          {/* Tasarımı Başlat */}
           <Button
             className="h-14 w-full rounded-xl bg-accent-black text-base font-semibold text-white hover:bg-accent-black/90 btn-press"
-            disabled={!tool}
             onClick={handleGenerate}
           >
             <Sparkles className="mr-2 h-5 w-5" />
@@ -703,7 +832,7 @@ export default function TasarlaPage() {
               <Button
                 className="mt-6 h-12 rounded-xl bg-accent-black text-base font-medium text-white hover:bg-accent-black/90 btn-press"
                 onClick={() => {
-                  setStep("tool");
+                  setStep("details");
                   setGenerationError(null);
                   setGenerationInfo(null);
                 }}
@@ -724,13 +853,9 @@ export default function TasarlaPage() {
                   ? `Tahmini süre: ~${generationInfo.estimatedTime} saniye`
                   : "Bu işlem birkaç saniye sürebilir."}
               </p>
-
-              {/* Elapsed timer */}
               <p className="mt-1 text-xs text-text-tertiary">
                 Geçen süre: {elapsedSeconds}s
               </p>
-
-              {/* Progress bar */}
               <div className="mt-6 h-1.5 w-48 overflow-hidden rounded-full bg-border-light">
                 <div
                   className="h-full rounded-full bg-accent-black transition-all duration-1000 ease-linear"
@@ -741,8 +866,6 @@ export default function TasarlaPage() {
                   }}
                 />
               </div>
-
-              {/* Model info */}
               {generationInfo && (
                 <div className="mt-6 rounded-xl border border-border-light bg-white px-4 py-3 text-center">
                   <p className="text-[11px] text-text-tertiary">

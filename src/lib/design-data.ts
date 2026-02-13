@@ -328,3 +328,326 @@ export function getTools(serviceType: string | null): ToolOption[] {
 
 /** @deprecated — Geriye uyumluluk için, getTools() kullanın */
 export const tools: ToolOption[] = dekorasyonTools;
+
+/* ─── Tasarım Detayları (Prompt Builder hızlı seçenekleri) ─── */
+
+export interface QuestionGroup {
+  id: string;
+  label: string;
+  options: string[];
+  multiple: boolean; // true = çoklu seçim, false = tekli
+}
+
+const detailQuestionsMap: Record<string, QuestionGroup[]> = {
+  /* ══ DEKORASYON ══ */
+  ev_dekorasyon: [
+    {
+      id: "oda_tipi",
+      label: "Oda Tipi",
+      options: ["salon", "yatak odası", "mutfak", "banyo", "çocuk odası", "çalışma odası", "antre", "yemek odası"],
+      multiple: false,
+    },
+    {
+      id: "renk_paleti",
+      label: "Renk Paleti",
+      options: ["nötr tonlar", "sıcak tonlar", "soğuk tonlar", "pastel", "koyu & dramatik", "doğal & toprak tonları"],
+      multiple: false,
+    },
+    {
+      id: "zemin",
+      label: "Zemin Tercihi",
+      options: ["parke", "seramik", "mermer", "halı", "beton", "doğal taş"],
+      multiple: false,
+    },
+    {
+      id: "aydinlatma",
+      label: "Aydınlatma",
+      options: ["doğal ışık ağırlıklı", "spot aydınlatma", "avize", "gizli LED", "endüstriyel aydınlatma"],
+      multiple: false,
+    },
+    {
+      id: "mobilya_yogunlugu",
+      label: "Mobilya Yoğunluğu",
+      options: ["minimal (az mobilya)", "dengeli", "dolu (çok mobilya)"],
+      multiple: false,
+    },
+    {
+      id: "ozel_istekler",
+      label: "Özel İstekler",
+      options: ["açık mutfak", "şömine", "kitaplık duvarı", "panoramik pencere", "iç bahçe", "sanat galerisi duvarı"],
+      multiple: true,
+    },
+  ],
+
+  ticari_dekorasyon: [
+    {
+      id: "mekan_tipi",
+      label: "Mekan Tipi",
+      options: ["lobi", "restoran salonu", "bar", "ofis açık alan", "toplantı odası", "resepsiyon", "bekleme salonu"],
+      multiple: false,
+    },
+    {
+      id: "atmosfer",
+      label: "Atmosfer",
+      options: ["lüks & premium", "sıcak & samimi", "modern & kurumsal", "enerjik & canlı", "sakin & huzurlu"],
+      multiple: false,
+    },
+    {
+      id: "kapasite",
+      label: "Kapasite",
+      options: ["küçük (1-20 kişi)", "orta (20-50 kişi)", "büyük (50-100 kişi)", "çok büyük (100+ kişi)"],
+      multiple: false,
+    },
+    {
+      id: "ozel_ogeler",
+      label: "Özel Öğeler",
+      options: ["bar tezgahı", "sahne/platform", "açık büfe alanı", "VIP bölüm", "dış mekan terası"],
+      multiple: true,
+    },
+  ],
+
+  endustriyel_dekorasyon: [
+    {
+      id: "alan_tipi",
+      label: "Alan Tipi",
+      options: ["fabrika ofisi", "showroom", "yemekhane", "dinlenme alanı", "toplantı odası"],
+      multiple: false,
+    },
+    {
+      id: "oncelik",
+      label: "Öncelik",
+      options: ["fonksiyonellik", "estetik", "ergonomi", "marka yansıtma"],
+      multiple: true,
+    },
+  ],
+
+  diger_dekorasyon: [
+    {
+      id: "alan",
+      label: "Alan",
+      options: ["bahçe", "teras", "balkon", "havuz çevresi", "çatı terası"],
+      multiple: false,
+    },
+    {
+      id: "stil_ogeleri",
+      label: "Stil Öğeleri",
+      options: ["bitki düzenlemesi", "su öğesi", "oturma alanı", "aydınlatma", "barbekü/mutfak", "pergola"],
+      multiple: true,
+    },
+  ],
+
+  /* ══ YAPI ══ */
+  ev_yapi: [
+    {
+      id: "kat_sayisi",
+      label: "Kat Sayısı",
+      options: ["tek kat", "2 kat", "3 kat", "dubleks", "çatı katı"],
+      multiple: false,
+    },
+    {
+      id: "alan",
+      label: "Tahmini Alan",
+      options: ["50-100 m²", "100-200 m²", "200-350 m²", "350-500 m²", "500+ m²"],
+      multiple: false,
+    },
+    {
+      id: "cephe",
+      label: "Cephe Malzemesi",
+      options: ["cam cephe", "kompozit panel", "taş kaplama", "ahşap kaplama", "sıva + boya", "karma"],
+      multiple: true,
+    },
+    {
+      id: "cati",
+      label: "Çatı Tipi",
+      options: ["düz çatı", "eğimli çatı", "beşik çatı", "yeşil çatı", "teras çatı"],
+      multiple: false,
+    },
+    {
+      id: "mimari_ozellik",
+      label: "Mimari Özellik",
+      options: ["geniş pencereler", "teras/balkon", "garaj", "havuz", "iç avlu", "çelik konstrüksiyon görünür"],
+      multiple: true,
+    },
+  ],
+
+  ticari_yapi: [
+    {
+      id: "bina_tipi",
+      label: "Bina Tipi",
+      options: ["mağaza", "ofis binası", "otel", "AVM", "otopark"],
+      multiple: false,
+    },
+    {
+      id: "kat_sayisi",
+      label: "Kat Sayısı",
+      options: ["tek kat", "2-3 kat", "4-7 kat", "8+ kat"],
+      multiple: false,
+    },
+    {
+      id: "cephe",
+      label: "Cephe",
+      options: ["cam giydirme", "alüminyum kompozit", "taş/tuğla", "beton", "karma"],
+      multiple: true,
+    },
+    {
+      id: "ozel",
+      label: "Özel",
+      options: ["giriş saçağı", "tabela alanı", "yükleme rampası", "otopark girişi"],
+      multiple: true,
+    },
+  ],
+
+  endustriyel_yapi: [
+    {
+      id: "yapi_tipi",
+      label: "Yapı Tipi",
+      options: ["fabrika", "depo/hangar", "atölye", "sera", "soğuk hava deposu", "enerji santrali"],
+      multiple: false,
+    },
+    {
+      id: "aciklik",
+      label: "Açıklık (Span)",
+      options: ["10-20 m", "20-30 m", "30-50 m", "50+ m"],
+      multiple: false,
+    },
+    {
+      id: "yukseklik",
+      label: "Yükseklik",
+      options: ["6-8 m", "8-12 m", "12-16 m", "16+ m"],
+      multiple: false,
+    },
+    {
+      id: "tasiyici",
+      label: "Taşıyıcı Sistem",
+      options: ["çelik çerçeve", "uzay kafes", "portal çerçeve", "makas sistem"],
+      multiple: false,
+    },
+    {
+      id: "kaplama",
+      label: "Kaplama",
+      options: ["sandviç panel", "trapez sac", "polikarbon", "cam", "PE örtü (sera)"],
+      multiple: false,
+    },
+    {
+      id: "zemin",
+      label: "Zemin",
+      options: ["beton plak", "epoksi", "endüstriyel şap", "toprak (sera)"],
+      multiple: false,
+    },
+    {
+      id: "tesisat",
+      label: "Tesisat",
+      options: ["köprü vinç", "yükleme kapısı", "havalandırma sistemi", "yangın sistemi", "aydınlatma"],
+      multiple: true,
+    },
+  ],
+
+  diger_yapi: [
+    {
+      id: "yapi",
+      label: "Yapı",
+      options: ["dış cephe", "pergola", "korkuluk", "havuz", "spor tesisi"],
+      multiple: false,
+    },
+    {
+      id: "malzeme",
+      label: "Malzeme",
+      options: ["çelik", "alüminyum", "ahşap", "cam", "kompozit"],
+      multiple: true,
+    },
+  ],
+
+  /* ══ İKLİMLENDİRME (teklif talebi formu) ══ */
+  ev_iklimlendirme: [
+    {
+      id: "mevcut_sistem",
+      label: "Mevcut Sistem",
+      options: ["yok", "kalorifer/radyatör", "klima (split)", "merkezi sistem", "yerden ısıtma", "diğer"],
+      multiple: false,
+    },
+    {
+      id: "ihtiyac",
+      label: "İhtiyaç",
+      options: ["ısıtma", "soğutma", "havalandırma", "yalıtım", "komple sistem"],
+      multiple: true,
+    },
+    {
+      id: "bolge",
+      label: "Bölge / İklim",
+      options: ["sıcak bölge", "ılıman bölge", "soğuk bölge", "çok soğuk bölge"],
+      multiple: false,
+    },
+  ],
+  ticari_iklimlendirme: [
+    {
+      id: "mevcut_sistem",
+      label: "Mevcut Sistem",
+      options: ["yok", "klima (split)", "merkezi sistem", "VRF", "chiller", "diğer"],
+      multiple: false,
+    },
+    {
+      id: "ihtiyac",
+      label: "İhtiyaç",
+      options: ["ısıtma", "soğutma", "havalandırma", "yalıtım", "komple sistem"],
+      multiple: true,
+    },
+    {
+      id: "bolge",
+      label: "Bölge / İklim",
+      options: ["sıcak bölge", "ılıman bölge", "soğuk bölge", "çok soğuk bölge"],
+      multiple: false,
+    },
+  ],
+  endustriyel_iklimlendirme: [
+    {
+      id: "mevcut_sistem",
+      label: "Mevcut Sistem",
+      options: ["yok", "endüstriyel soğutma", "fabrika havalandırma", "merkezi sistem", "diğer"],
+      multiple: false,
+    },
+    {
+      id: "ihtiyac",
+      label: "İhtiyaç",
+      options: ["ısıtma", "soğutma", "havalandırma", "yalıtım", "komple sistem"],
+      multiple: true,
+    },
+    {
+      id: "bolge",
+      label: "Bölge / İklim",
+      options: ["sıcak bölge", "ılıman bölge", "soğuk bölge", "çok soğuk bölge"],
+      multiple: false,
+    },
+  ],
+  diger_iklimlendirme: [
+    {
+      id: "mevcut_sistem",
+      label: "Mevcut Sistem",
+      options: ["yok", "havuz ısıtma", "sera sistemi", "dış mekan ısıtıcı", "diğer"],
+      multiple: false,
+    },
+    {
+      id: "ihtiyac",
+      label: "İhtiyaç",
+      options: ["ısıtma", "soğutma", "havalandırma", "komple sistem"],
+      multiple: true,
+    },
+    {
+      id: "bolge",
+      label: "Bölge / İklim",
+      options: ["sıcak bölge", "ılıman bölge", "soğuk bölge", "çok soğuk bölge"],
+      multiple: false,
+    },
+  ],
+};
+
+/**
+ * Kategori + hizmet tipine göre detay sorularını döndürür
+ */
+export function getDetailQuestions(
+  categoryId: string | null,
+  serviceId: string | null
+): QuestionGroup[] {
+  if (!categoryId || !serviceId) return [];
+  const key = `${categoryId}_${serviceId}`;
+  return detailQuestionsMap[key] ?? [];
+}

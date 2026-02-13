@@ -52,6 +52,7 @@ export async function POST(request: Request) {
     const serviceType = formData.get("serviceType") as string;
     const style = formData.get("style") as string;
     const tool = formData.get("tool") as string;
+    const customPrompt = (formData.get("customPrompt") as string) || undefined;
 
     if (!imageFile || !category || !serviceType || !style || !tool) {
       return NextResponse.json(
@@ -95,8 +96,8 @@ export async function POST(request: Request) {
     console.log(`Cost: $${calculateModelCost(finalModel)}`);
     console.log(`ETA: ${estimateProcessingTime(finalModel)}s`);
 
-    // 6. Build enhanced prompt (same logic as mobile)
-    const prompt = buildEnhancedPrompt(serviceType, category, style, tool);
+    // 6. Build enhanced prompt (same logic as mobile + user details)
+    const prompt = buildEnhancedPrompt(serviceType, category, style, tool, customPrompt);
     console.log("Prompt:", prompt);
 
     // 7. Start Replicate prediction — apply tool-specific strength override
