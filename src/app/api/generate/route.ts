@@ -109,7 +109,23 @@ export async function POST(request: Request) {
     const steps = finalModel.steps || 30;
     const resolution = finalModel.resolution || 768;
 
-    console.log(`Tool: ${tool}, Strength override: ${toolStrength}, Final strength: ${strength}`);
+    // Generate random seed for unique results every time
+    const seed = Math.floor(Math.random() * 2147483647);
+
+    console.log("=== REPLICATE REQUEST ===");
+    console.log("Model:", finalModel.modelId);
+    console.log("Version:", version);
+    console.log("Prompt:", prompt);
+    console.log("Seed:", seed);
+    console.log("Strength:", strength);
+    console.log("Scale:", scale);
+    console.log("Steps:", steps);
+    console.log("Resolution:", resolution);
+    console.log("Tool:", tool, "| Strength override:", toolStrength);
+    console.log("CustomPrompt:", customPrompt || "(none)");
+    console.log("Image size:", imageFile.size, "bytes");
+    console.log("Image type:", imageFile.type);
+    console.log("=========================");
 
     const replicateResponse = await fetch(REPLICATE_API_URL, {
       method: "POST",
@@ -133,7 +149,7 @@ export async function POST(request: Request) {
           guess_mode: false,
           strength,
           scale,
-          seed: -1,
+          seed,
           eta: 0.0,
         },
       }),
