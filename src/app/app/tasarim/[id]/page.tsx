@@ -138,7 +138,7 @@ export default function TasarimDetailPage({
             <div>
               <p className="text-xs text-text-tertiary">AI Model</p>
               <p className="text-sm font-medium text-text-primary">
-                evim AI v1
+                VOXI AI v1
               </p>
             </div>
           </div>

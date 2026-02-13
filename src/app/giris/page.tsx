@@ -144,7 +144,7 @@ export default function GirisPage() {
         <div className="w-full max-w-md">
           {/* Logo */}
           <div className="mb-8 text-center">
-            <h1 className="text-2xl font-bold text-text-primary">evim</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-text-primary">VOXI</h1>
             <p className="mt-2 text-text-secondary">
               {mode === "select" && "Hesabina giris yap veya kaydol"}
               {mode === "phone" && "Telefon numaranla devam et"}

@@ -56,8 +56,8 @@ export default function LandingPage() {
       {/* Header */}
       <header className="sticky top-0 z-50 border-b border-border-light bg-warm-bg/80 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4">
-          <Link href="/" className="text-xl font-bold text-text-primary">
-            evim
+          <Link href="/" className="text-xl font-bold tracking-tight text-text-primary">
+            VOXI
           </Link>
           <Link href="/giris">
             <Button
@@ -76,17 +76,17 @@ export default function LandingPage() {
           <div className="mx-auto max-w-2xl text-center">
             <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-border-light bg-white px-4 py-2 text-sm text-text-secondary">
               <Sparkles className="h-4 w-4 text-text-tertiary" />
-              <span>Yapay zeka destekli tasarim</span>
+              <span>Hayal Et &middot; G&ouml;r &middot; Yapt&#305;r</span>
             </div>
 
             <h1 className="text-4xl font-bold leading-tight tracking-tight text-text-primary md:text-6xl md:leading-tight">
-              Evini hayal et,
+              Hayal et,
               <br />
-              AI tasarlasin.
+              VOXI tasarlasin.
             </h1>
 
             <p className="mx-auto mt-6 max-w-lg text-lg text-text-secondary md:text-xl">
-              Odanin bir fotografini yukle, istedigin tarzi sec. Yapay zeka
+              Odanin bir fotografini yukle, istedigin tarzi sec. VOXI
               saniyeler icinde profesyonel ic mekan tasarimi olusturur.
             </p>
 
@@ -174,7 +174,7 @@ export default function LandingPage() {
               Kullanicilar ne diyor?
             </h2>
             <p className="mt-4 text-lg text-text-secondary">
-              Binlerce kullanici evim ile evlerini donusturdu.
+              Binlerce kullanici VOXI ile evlerini donusturdu.
             </p>
           </div>
 
@@ -229,7 +229,7 @@ export default function LandingPage() {
         <div className="mx-auto max-w-6xl px-4 py-8">
           <div className="flex flex-col items-center justify-between gap-4 md:flex-row">
             <p className="text-sm text-text-tertiary">
-              2025 evim. Tum haklari saklidir.
+              2025 VOXI. Tum haklari saklidir.
             </p>
             <div className="flex gap-6">
               <Link

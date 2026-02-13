@@ -56,8 +56,8 @@ export function AppShell({
       {/* Top Header - Desktop & Mobile */}
       <header className="sticky top-0 z-50 border-b border-border-light bg-white/80 backdrop-blur-xl">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
-          <Link href="/app" className="text-lg font-bold text-text-primary">
-            evim
+          <Link href="/app" className="text-lg font-bold tracking-tight text-text-primary">
+            VOXI
           </Link>
 
           {/* Desktop Nav */}
