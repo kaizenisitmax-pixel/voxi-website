@@ -53,6 +53,9 @@
   --color-text-tertiary: #8E8E93;
   --color-accent-black: #212121;
   --color-border-light: #E5E5EA;
+  --color-danger: #FF3B30;
+  --color-success: #34C759;
+  --color-selected-bg: #F5F5F5;
 }
 
 :root {
