@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,6 +12,7 @@ import {
   Loader2,
   Sparkles,
   Info,
+  AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -21,6 +22,12 @@ import {
   tools,
   photoTips,
 } from "@/lib/design-data";
+import {
+  getModelForDesign,
+  estimateProcessingTime,
+  calculateModelCost,
+  REPLICATE_MODELS,
+} from "@/lib/replicate-model-mapping";
 import type { StyleOption } from "@/lib/design-data";
 
 type Step = "category" | "service" | "style" | "photo" | "tool" | "generating";
@@ -42,12 +49,32 @@ export default function TasarlaPage() {
   const [service, setService] = useState<string | null>(null);
   const [style, setStyle] = useState<string | null>(null);
   const [photo, setPhoto] = useState<string | null>(null);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [tool, setTool] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+
+  // Generation state
+  const [generationError, setGenerationError] = useState<string | null>(null);
+  const [generationInfo, setGenerationInfo] = useState<{
+    modelUsed: string;
+    estimatedTime: number;
+    estimatedCost: number;
+  } | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stepIdx = stepOrder.indexOf(step);
   const currentStepMeta = step !== "generating" ? stepLabels[step] : null;
   const availableStyles = getStyles(category, service);
+
+  // Cleanup polling/timer on unmount
+  useEffect(() => {
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, []);
 
   const goNext = () => {
     const next = stepOrder[stepIdx + 1];
@@ -61,7 +88,10 @@ export default function TasarlaPage() {
   const handleImageUpload = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
-      if (file) setPhoto(URL.createObjectURL(file));
+      if (file) {
+        setPhoto(URL.createObjectURL(file));
+        setPhotoFile(file);
+      }
     },
     []
   );
@@ -70,12 +100,97 @@ export default function TasarlaPage() {
     e.preventDefault();
     setIsDragging(false);
     const file = e.dataTransfer.files?.[0];
-    if (file?.type.startsWith("image/")) setPhoto(URL.createObjectURL(file));
+    if (file?.type.startsWith("image/")) {
+      setPhoto(URL.createObjectURL(file));
+      setPhotoFile(file);
+    }
   }, []);
 
-  const handleGenerate = () => {
+  // Real AI generation: POST to /api/generate, then poll /api/generate/status
+  const handleGenerate = async () => {
+    if (!photoFile || !category || !service || !style || !tool) return;
+
     setStep("generating");
-    setTimeout(() => router.push("/app/tasarim/demo-1"), 3000);
+    setGenerationError(null);
+    setElapsedSeconds(0);
+
+    // Show model info in UI
+    const modelConfig = getModelForDesign(service, category, style);
+    const finalModel = modelConfig || REPLICATE_MODELS.interior_design;
+    setGenerationInfo({
+      modelUsed: finalModel.modelId,
+      estimatedTime: estimateProcessingTime(finalModel),
+      estimatedCost: calculateModelCost(finalModel),
+    });
+
+    // Start elapsed timer
+    timerRef.current = setInterval(() => {
+      setElapsedSeconds((prev) => prev + 1);
+    }, 1000);
+
+    try {
+      // 1. Start generation
+      const formData = new FormData();
+      formData.append("image", photoFile);
+      formData.append("category", category);
+      formData.append("serviceType", service);
+      formData.append("style", style);
+      formData.append("tool", tool);
+
+      const startRes = await fetch("/api/generate", {
+        method: "POST",
+        body: formData,
+      });
+
+      const startData = await startRes.json();
+
+      if (!startRes.ok) {
+        throw new Error(startData.error || "Tasarim baslatilamadi");
+      }
+
+      const { designId, predictionId } = startData;
+
+      // 2. Poll for status
+      const pollStatus = async (): Promise<void> => {
+        try {
+          const statusRes = await fetch(
+            `/api/generate/status?predictionId=${predictionId}&designId=${designId}`
+          );
+          const statusData = await statusRes.json();
+
+          if (statusData.status === "completed") {
+            // Stop polling & timer
+            if (pollingRef.current) clearInterval(pollingRef.current);
+            if (timerRef.current) clearInterval(timerRef.current);
+            // Redirect to design detail
+            router.push(`/app/tasarim/${designId}`);
+            return;
+          }
+
+          if (statusData.status === "failed") {
+            if (pollingRef.current) clearInterval(pollingRef.current);
+            if (timerRef.current) clearInterval(timerRef.current);
+            setGenerationError(statusData.error || "Tasarim basarisiz oldu");
+            return;
+          }
+
+          // Still processing, continue polling
+        } catch {
+          // Network error, keep polling
+          console.error("Polling error, retrying...");
+        }
+      };
+
+      // Poll every 2 seconds
+      pollingRef.current = setInterval(pollStatus, 2000);
+      // Also check immediately after a short delay
+      setTimeout(pollStatus, 1000);
+    } catch (error) {
+      if (timerRef.current) clearInterval(timerRef.current);
+      setGenerationError(
+        error instanceof Error ? error.message : "Beklenmeyen bir hata olustu"
+      );
+    }
   };
 
   return (
@@ -436,10 +551,33 @@ export default function TasarlaPage() {
                   {tools.find((t) => t.id === tool)?.label ?? "—"}
                 </span>
               </div>
-              <div className="flex justify-between border-t border-border-light pt-2">
-                <span className="text-text-tertiary">Maliyet</span>
-                <span className="font-medium text-text-primary">1 Kredi</span>
-              </div>
+              {/* Dynamic model info based on selections */}
+              {category && service && style && (() => {
+                const m = getModelForDesign(service, category, style);
+                const model = m || REPLICATE_MODELS.interior_design;
+                return (
+                  <>
+                    <div className="flex justify-between border-t border-border-light pt-2">
+                      <span className="text-text-tertiary">AI Model</span>
+                      <span className="font-medium text-text-primary text-xs">
+                        {model.modelId.split("/").pop()}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-text-tertiary">Tahmini Süre</span>
+                      <span className="font-medium text-text-primary">
+                        ~{estimateProcessingTime(model)}s
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-text-tertiary">Maliyet</span>
+                      <span className="font-medium text-text-primary">
+                        ${calculateModelCost(model).toFixed(3)}
+                      </span>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           </div>
 
@@ -461,18 +599,69 @@ export default function TasarlaPage() {
          ══════════════════════════════════════════ */}
       {step === "generating" && (
         <div className="flex flex-col items-center justify-center py-24">
-          <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-3xl border border-border-light bg-white shadow-sm">
-            <Loader2 className="h-8 w-8 animate-spin text-text-primary" />
-          </div>
-          <h2 className="text-xl font-semibold text-text-primary">
-            Tasarım oluşturuluyor...
-          </h2>
-          <p className="mt-2 text-sm text-text-secondary">
-            Bu işlem birkaç saniye sürebilir.
-          </p>
-          <div className="mt-8 h-1 w-48 overflow-hidden rounded-full bg-border-light">
-            <div className="h-full w-1/2 animate-pulse rounded-full bg-accent-black" />
-          </div>
+          {generationError ? (
+            <>
+              <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-3xl border border-danger/20 bg-danger/5 shadow-sm">
+                <AlertCircle className="h-8 w-8 text-danger" />
+              </div>
+              <h2 className="text-xl font-semibold text-text-primary">
+                Tasarım başarısız
+              </h2>
+              <p className="mt-2 max-w-sm text-center text-sm text-text-secondary">
+                {generationError}
+              </p>
+              <Button
+                className="mt-6 h-12 rounded-xl bg-accent-black text-base font-medium text-white hover:bg-accent-black/90 btn-press"
+                onClick={() => {
+                  setStep("tool");
+                  setGenerationError(null);
+                  setGenerationInfo(null);
+                }}
+              >
+                Tekrar Dene
+              </Button>
+            </>
+          ) : (
+            <>
+              <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-3xl border border-border-light bg-white shadow-sm">
+                <Loader2 className="h-8 w-8 animate-spin text-text-primary" />
+              </div>
+              <h2 className="text-xl font-semibold text-text-primary">
+                Tasarım oluşturuluyor...
+              </h2>
+              <p className="mt-2 text-sm text-text-secondary">
+                {generationInfo
+                  ? `Tahmini süre: ~${generationInfo.estimatedTime} saniye`
+                  : "Bu işlem birkaç saniye sürebilir."}
+              </p>
+
+              {/* Elapsed timer */}
+              <p className="mt-1 text-xs text-text-tertiary">
+                Geçen süre: {elapsedSeconds}s
+              </p>
+
+              {/* Progress bar */}
+              <div className="mt-6 h-1.5 w-48 overflow-hidden rounded-full bg-border-light">
+                <div
+                  className="h-full rounded-full bg-accent-black transition-all duration-1000 ease-linear"
+                  style={{
+                    width: generationInfo
+                      ? `${Math.min((elapsedSeconds / generationInfo.estimatedTime) * 100, 95)}%`
+                      : "50%",
+                  }}
+                />
+              </div>
+
+              {/* Model info */}
+              {generationInfo && (
+                <div className="mt-6 rounded-xl border border-border-light bg-white px-4 py-3 text-center">
+                  <p className="text-[11px] text-text-tertiary">
+                    Model: {generationInfo.modelUsed.split("/").pop()}
+                  </p>
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
     </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,23 +14,121 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
-type AuthMode = "select" | "phone" | "phone-otp" | "email" | "email-sent";
+type AuthMode = "select" | "phone" | "phone-otp" | "email" | "email-otp";
 
 export default function GirisPage() {
   const [mode, setMode] = useState<AuthMode>("select");
   const [phone, setPhone] = useState("");
-  const [otp, setOtp] = useState("");
+  const [otp, setOtp] = useState<string[]>(["", "", "", "", "", ""]);
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [countdown, setCountdown] = useState(0);
 
+  const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const supabaseRef = useRef<ReturnType<typeof createClient> | null>(null);
+
   function getSupabase() {
     if (!supabaseRef.current) {
       supabaseRef.current = createClient();
     }
     return supabaseRef.current;
   }
+
+  // Countdown timer for resend
+  useEffect(() => {
+    if (countdown <= 0) return;
+    const timer = setTimeout(() => setCountdown((c) => c - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [countdown]);
+
+  // Focus first OTP input when entering OTP mode
+  useEffect(() => {
+    if (mode === "phone-otp" || mode === "email-otp") {
+      setTimeout(() => otpInputRefs.current[0]?.focus(), 100);
+    }
+  }, [mode]);
+
+  // ── OTP Input Handlers ──
+
+  const handleOtpChange = useCallback(
+    (index: number, value: string) => {
+      // Only allow digits
+      const digit = value.replace(/\D/g, "");
+
+      // Handle paste of full code
+      if (digit.length > 1) {
+        const digits = digit.slice(0, 6).split("");
+        const newOtp = [...otp];
+        digits.forEach((d, i) => {
+          if (index + i < 6) newOtp[index + i] = d;
+        });
+        setOtp(newOtp);
+        // Focus the next empty input or last
+        const nextIdx = Math.min(index + digits.length, 5);
+        otpInputRefs.current[nextIdx]?.focus();
+        return;
+      }
+
+      const newOtp = [...otp];
+      newOtp[index] = digit;
+      setOtp(newOtp);
+
+      // Auto-focus next input
+      if (digit && index < 5) {
+        otpInputRefs.current[index + 1]?.focus();
+      }
+    },
+    [otp]
+  );
+
+  const handleOtpKeyDown = useCallback(
+    (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+      // Backspace: clear current or go back
+      if (e.key === "Backspace") {
+        if (otp[index]) {
+          const newOtp = [...otp];
+          newOtp[index] = "";
+          setOtp(newOtp);
+        } else if (index > 0) {
+          const newOtp = [...otp];
+          newOtp[index - 1] = "";
+          setOtp(newOtp);
+          otpInputRefs.current[index - 1]?.focus();
+        }
+        e.preventDefault();
+      }
+      // Left arrow
+      if (e.key === "ArrowLeft" && index > 0) {
+        otpInputRefs.current[index - 1]?.focus();
+      }
+      // Right arrow
+      if (e.key === "ArrowRight" && index < 5) {
+        otpInputRefs.current[index + 1]?.focus();
+      }
+    },
+    [otp]
+  );
+
+  const handleOtpPaste = useCallback((e: React.ClipboardEvent) => {
+    e.preventDefault();
+    const text = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
+    if (!text) return;
+    const digits = text.split("");
+    const newOtp = ["", "", "", "", "", ""];
+    digits.forEach((d, i) => {
+      newOtp[i] = d;
+    });
+    setOtp(newOtp);
+    const focusIdx = Math.min(digits.length, 5);
+    otpInputRefs.current[focusIdx]?.focus();
+  }, []);
+
+  const otpCode = otp.join("");
+
+  const resetOtp = () => setOtp(["", "", "", "", "", ""]);
+
+  // ── Phone Auth ──
 
   const handlePhoneSubmit = async () => {
     if (!phone) return;
@@ -47,12 +145,14 @@ export default function GirisPage() {
       setError(error.message);
     } else {
       setMode("phone-otp");
+      setCountdown(60);
+      resetOtp();
     }
     setLoading(false);
   };
 
-  const handleOtpVerify = async () => {
-    if (!otp) return;
+  const handlePhoneOtpVerify = async () => {
+    if (otpCode.length !== 6) return;
     setLoading(true);
     setError("");
 
@@ -60,7 +160,7 @@ export default function GirisPage() {
 
     const { error } = await getSupabase().auth.verifyOtp({
       phone: formattedPhone,
-      token: otp,
+      token: otpCode,
       type: "sms",
     });
 
@@ -72,6 +172,8 @@ export default function GirisPage() {
     setLoading(false);
   };
 
+  // ── Email OTP Auth ──
+
   const handleEmailSubmit = async () => {
     if (!email) return;
     setLoading(true);
@@ -79,19 +181,52 @@ export default function GirisPage() {
 
     const { error } = await getSupabase().auth.signInWithOtp({
       email,
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
-      },
     });
 
     if (error) {
       setError(error.message);
     } else {
-      setError("");
-      setMode("email-sent");
+      setMode("email-otp");
+      setCountdown(60);
+      resetOtp();
     }
     setLoading(false);
   };
+
+  const handleEmailOtpVerify = async () => {
+    if (otpCode.length !== 6) return;
+    setLoading(true);
+    setError("");
+
+    const { error } = await getSupabase().auth.verifyOtp({
+      email,
+      token: otpCode,
+      type: "email",
+    });
+
+    if (error) {
+      setError(error.message);
+    } else {
+      window.location.href = "/app";
+    }
+    setLoading(false);
+  };
+
+  // ── Resend ──
+
+  const handleResend = async () => {
+    if (countdown > 0) return;
+    resetOtp();
+    setError("");
+
+    if (mode === "phone-otp") {
+      await handlePhoneSubmit();
+    } else if (mode === "email-otp") {
+      await handleEmailSubmit();
+    }
+  };
+
+  // ── OAuth ──
 
   const handleOAuthLogin = async (provider: "google" | "apple") => {
     setLoading(true);
@@ -110,6 +245,42 @@ export default function GirisPage() {
     }
   };
 
+  // Auto-verify when 6 digits are entered
+  useEffect(() => {
+    if (otpCode.length === 6) {
+      if (mode === "phone-otp") {
+        handlePhoneOtpVerify();
+      } else if (mode === "email-otp") {
+        handleEmailOtpVerify();
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [otpCode, mode]);
+
+  // ── OTP Input Grid Component ──
+
+  const renderOtpInputs = () => (
+    <div className="flex justify-center gap-2 sm:gap-3">
+      {otp.map((digit, index) => (
+        <input
+          key={index}
+          ref={(el) => {
+            otpInputRefs.current[index] = el;
+          }}
+          type="text"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          maxLength={1}
+          value={digit}
+          onChange={(e) => handleOtpChange(index, e.target.value)}
+          onKeyDown={(e) => handleOtpKeyDown(index, e)}
+          onPaste={handleOtpPaste}
+          className="h-14 w-12 rounded-xl border border-border-light bg-white text-center text-2xl font-bold text-text-primary transition-colors focus:border-accent-black focus:outline-none focus:ring-2 focus:ring-accent-black/20"
+        />
+      ))}
+    </div>
+  );
+
   return (
     <div className="flex min-h-screen flex-col bg-warm-bg">
       {/* Header */}
@@ -118,8 +289,11 @@ export default function GirisPage() {
           {mode !== "select" ? (
             <button
               onClick={() => {
-                setMode("select");
+                if (mode === "phone-otp") setMode("phone");
+                else if (mode === "email-otp") setMode("email");
+                else setMode("select");
                 setError("");
+                resetOtp();
               }}
               className="flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary transition-colors btn-press"
             >
@@ -149,7 +323,7 @@ export default function GirisPage() {
               {mode === "phone" && "Telefon numaranla devam et"}
               {mode === "phone-otp" && "Doğrulama kodunu gir"}
               {mode === "email" && "E-posta adresinle devam et"}
-              {mode === "email-sent" && "E-postanı kontrol et"}
+              {mode === "email-otp" && "Doğrulama kodunu gir"}
             </p>
           </div>
 
@@ -249,7 +423,7 @@ export default function GirisPage() {
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
                     <>
-                      Devam Et
+                      Kod Gönder
                       <ArrowRight className="ml-2 h-4 w-4" />
                     </>
                   )}
@@ -257,32 +431,24 @@ export default function GirisPage() {
               </div>
             )}
 
-            {/* OTP */}
+            {/* Phone OTP */}
             {mode === "phone-otp" && (
-              <div className="space-y-4">
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-text-primary">
-                    Doğrulama Kodu
-                  </label>
-                  <p className="mb-3 text-sm text-text-tertiary">
-                    +90{phone} numarasına gönderilen 6 haneli kodu gir.
+              <div className="space-y-5">
+                <div className="text-center">
+                  <p className="text-sm text-text-secondary">
+                    <span className="font-medium text-text-primary">
+                      +90{phone}
+                    </span>{" "}
+                    numarasına gönderilen 6 haneli kodu gir.
                   </p>
-                  <Input
-                    type="text"
-                    placeholder="000000"
-                    value={otp}
-                    onChange={(e) =>
-                      setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))
-                    }
-                    className="h-12 rounded-xl border-border-light bg-white text-center text-lg tracking-[0.3em] text-text-primary placeholder:text-text-tertiary focus-visible:ring-accent-black"
-                    maxLength={6}
-                    autoFocus
-                  />
                 </div>
+
+                {renderOtpInputs()}
+
                 <Button
                   className="h-12 w-full rounded-xl bg-accent-black text-base font-medium text-white hover:bg-accent-black/90 btn-press"
-                  onClick={handleOtpVerify}
-                  disabled={loading || otp.length !== 6}
+                  onClick={handlePhoneOtpVerify}
+                  disabled={loading || otpCode.length !== 6}
                 >
                   {loading ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -290,15 +456,21 @@ export default function GirisPage() {
                     "Doğrula"
                   )}
                 </Button>
-                <button
-                  onClick={() => {
-                    setOtp("");
-                    handlePhoneSubmit();
-                  }}
-                  className="w-full text-center text-sm text-text-tertiary hover:text-text-primary transition-colors"
-                >
-                  Tekrar gönder
-                </button>
+
+                <div className="text-center">
+                  {countdown > 0 ? (
+                    <p className="text-sm text-text-tertiary">
+                      Tekrar gönder ({countdown}s)
+                    </p>
+                  ) : (
+                    <button
+                      onClick={handleResend}
+                      className="text-sm font-medium text-text-primary hover:underline transition-colors"
+                    >
+                      Tekrar Gönder
+                    </button>
+                  )}
+                </div>
               </div>
             )}
 
@@ -316,6 +488,9 @@ export default function GirisPage() {
                     onChange={(e) => setEmail(e.target.value)}
                     className="h-12 rounded-xl border-border-light bg-white text-text-primary placeholder:text-text-tertiary focus-visible:ring-accent-black"
                     autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleEmailSubmit();
+                    }}
                   />
                 </div>
                 <Button
@@ -327,41 +502,57 @@ export default function GirisPage() {
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
                     <>
-                      Giriş Linki Gönder
-                      <Mail className="ml-2 h-4 w-4" />
+                      Kod Gönder
+                      <ArrowRight className="ml-2 h-4 w-4" />
                     </>
                   )}
                 </Button>
                 <p className="text-center text-xs text-text-tertiary">
-                  E-posta adresine tek kullanımlık giriş linki gönderilecek.
+                  E-posta adresine 6 haneli doğrulama kodu gönderilecek.
                 </p>
               </div>
             )}
 
-            {/* Email Sent Confirmation */}
-            {mode === "email-sent" && (
-              <div className="space-y-4 text-center">
-                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-warm-bg">
-                  <Mail className="h-6 w-6 text-text-primary" />
-                </div>
-                <div>
-                  <h3 className="text-base font-semibold text-text-primary">
-                    Giriş linki gönderildi
-                  </h3>
-                  <p className="mt-2 text-sm text-text-secondary">
-                    <span className="font-medium">{email}</span> adresine
-                    giriş linki gönderdik. E-postanı kontrol et.
+            {/* Email OTP */}
+            {mode === "email-otp" && (
+              <div className="space-y-5">
+                <div className="text-center">
+                  <p className="text-sm text-text-secondary">
+                    <span className="font-medium text-text-primary">
+                      {email}
+                    </span>{" "}
+                    adresine gönderilen 6 haneli kodu gir.
                   </p>
                 </div>
-                <button
-                  onClick={() => {
-                    setMode("email");
-                    setError("");
-                  }}
-                  className="text-sm text-text-tertiary hover:text-text-primary transition-colors"
+
+                {renderOtpInputs()}
+
+                <Button
+                  className="h-12 w-full rounded-xl bg-accent-black text-base font-medium text-white hover:bg-accent-black/90 btn-press"
+                  onClick={handleEmailOtpVerify}
+                  disabled={loading || otpCode.length !== 6}
                 >
-                  Tekrar gönder
-                </button>
+                  {loading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    "Doğrula"
+                  )}
+                </Button>
+
+                <div className="text-center">
+                  {countdown > 0 ? (
+                    <p className="text-sm text-text-tertiary">
+                      Tekrar gönder ({countdown}s)
+                    </p>
+                  ) : (
+                    <button
+                      onClick={handleResend}
+                      className="text-sm font-medium text-text-primary hover:underline transition-colors"
+                    >
+                      Tekrar Gönder
+                    </button>
+                  )}
+                </div>
               </div>
             )}
           </div>
