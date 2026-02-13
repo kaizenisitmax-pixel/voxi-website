@@ -13,13 +13,14 @@ import {
   Sparkles,
   Info,
   AlertCircle,
+  MessageCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   categories,
   serviceTypes,
   getStyles,
-  tools,
+  getTools,
   photoTips,
 } from "@/lib/design-data";
 import {
@@ -30,17 +31,24 @@ import {
 } from "@/lib/replicate-model-mapping";
 import type { StyleOption } from "@/lib/design-data";
 
-type Step = "category" | "service" | "style" | "photo" | "tool" | "generating";
+type Step = "category" | "service" | "style" | "iklimlendirme-info" | "photo" | "tool" | "generating";
 
-const stepLabels: Record<Exclude<Step, "generating">, { num: number; title: string }> = {
+const stepLabels: Record<string, { num: number; title: string }> = {
   category: { num: 1, title: "Kategori" },
   service: { num: 1, title: "Hizmet Tipi" },
   style: { num: 2, title: "Stil" },
+  "iklimlendirme-info": { num: 3, title: "Bilgi" },
   photo: { num: 3, title: "Fotoğraf" },
   tool: { num: 4, title: "Araç" },
 };
 
-const stepOrder: Step[] = ["category", "service", "style", "photo", "tool", "generating"];
+// Step order changes dynamically based on service type
+function getStepOrder(serviceType: string | null): Step[] {
+  if (serviceType === "iklimlendirme") {
+    return ["category", "service", "style", "iklimlendirme-info"];
+  }
+  return ["category", "service", "style", "photo", "tool", "generating"];
+}
 
 export default function TasarlaPage() {
   const router = useRouter();
@@ -64,9 +72,11 @@ export default function TasarlaPage() {
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const stepOrder = getStepOrder(service);
   const stepIdx = stepOrder.indexOf(step);
   const currentStepMeta = step !== "generating" ? stepLabels[step] : null;
   const availableStyles = getStyles(category, service);
+  const availableTools = getTools(service);
 
   // Cleanup polling/timer on unmount
   useEffect(() => {
@@ -217,7 +227,7 @@ export default function TasarlaPage() {
 
           {/* Numbered step badges */}
           <div className="mb-8 flex items-center justify-center gap-2">
-            {[1, 2, 3, 4].map((num) => {
+            {(service === "iklimlendirme" ? [1, 2, 3] : [1, 2, 3, 4]).map((num, i, arr) => {
               const active = currentStepMeta && currentStepMeta.num >= num;
               const current = currentStepMeta?.num === num;
               return (
@@ -234,7 +244,7 @@ export default function TasarlaPage() {
                   >
                     {num}
                   </div>
-                  {num < 4 && (
+                  {i < arr.length - 1 && (
                     <div
                       className={cn(
                         "h-0.5 w-6 rounded-full transition-colors md:w-10",
@@ -300,6 +310,7 @@ export default function TasarlaPage() {
                 onClick={() => {
                   setService(svc.id);
                   setStyle(null);
+                  setTool(null);
                   goNext();
                 }}
                 className={cn(
@@ -371,7 +382,13 @@ export default function TasarlaPage() {
           <Button
             className="h-12 w-full rounded-xl bg-accent-black text-base font-medium text-white hover:bg-accent-black/90 btn-press"
             disabled={!style}
-            onClick={goNext}
+            onClick={() => {
+              if (service === "iklimlendirme") {
+                setStep("iklimlendirme-info");
+              } else {
+                goNext();
+              }
+            }}
           >
             Devam Et
             <ArrowRight className="ml-2 h-4 w-4" />
@@ -487,7 +504,75 @@ export default function TasarlaPage() {
       )}
 
       {/* ══════════════════════════════════════════
-          ADIM 4: ARAÇ SEÇ
+          İKLİMLENDİRME BİLGİ (araç yok, AI tasarım desteklenmiyor)
+         ══════════════════════════════════════════ */}
+      {step === "iklimlendirme-info" && (
+        <div className="space-y-6">
+          <div className="rounded-2xl border border-border-light bg-white p-8 text-center shadow-sm">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-warm-bg">
+              <Info className="h-7 w-7 text-text-tertiary" />
+            </div>
+            <h3 className="text-lg font-semibold text-text-primary">
+              AI Tasarım Yakında
+            </h3>
+            <p className="mt-3 text-sm leading-relaxed text-text-secondary">
+              İklimlendirme kategorisinde AI görsel tasarım henüz desteklenmiyor.
+              Şimdilik uzmanlarımızla iletişime geçerek projeniz için profesyonel
+              destek alabilirsiniz.
+            </p>
+          </div>
+
+          {/* Özet kartı */}
+          <div className="rounded-2xl border border-border-light bg-white p-5 shadow-sm">
+            <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
+              Seçimleriniz
+            </h3>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-text-tertiary">Kategori</span>
+                <span className="font-medium text-text-primary">
+                  {categories.find((c) => c.id === category)?.label ?? "—"}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-text-tertiary">Hizmet</span>
+                <span className="font-medium text-text-primary">
+                  {serviceTypes.find((s) => s.id === service)?.label ?? "—"}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-text-tertiary">Stil</span>
+                <span className="font-medium text-text-primary">
+                  {getStyles(category, service).find((s) => s.id === style)
+                    ?.label ?? "—"}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <Button
+            className="h-14 w-full rounded-xl bg-accent-black text-base font-semibold text-white hover:bg-accent-black/90 btn-press"
+            onClick={() => router.push("/app/sohbetler")}
+          >
+            <MessageCircle className="mr-2 h-5 w-5" />
+            Uzmanla İletişime Geç
+          </Button>
+
+          <button
+            onClick={() => {
+              setService(null);
+              setStyle(null);
+              setStep("category");
+            }}
+            className="w-full text-center text-sm text-text-tertiary hover:text-text-primary transition-colors"
+          >
+            Farklı bir hizmet tipi seç
+          </button>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════
+          ADIM 4: ARAÇ SEÇ (Dinamik — hizmet tipine göre)
          ══════════════════════════════════════════ */}
       {step === "tool" && (
         <div className="space-y-6">
@@ -495,8 +580,13 @@ export default function TasarlaPage() {
             Ne yapmak istersiniz?
           </p>
 
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-            {tools.map((t) => (
+          <div className={cn(
+            "grid gap-3",
+            availableTools.length <= 2
+              ? "grid-cols-2"
+              : "grid-cols-2 md:grid-cols-5"
+          )}>
+            {availableTools.map((t) => (
               <button
                 key={t.id}
                 onClick={() => setTool(t.id)}
@@ -548,7 +638,7 @@ export default function TasarlaPage() {
               <div className="flex justify-between">
                 <span className="text-text-tertiary">Araç</span>
                 <span className="font-medium text-text-primary">
-                  {tools.find((t) => t.id === tool)?.label ?? "—"}
+                  {availableTools.find((t) => t.id === tool)?.label ?? "—"}
                 </span>
               </div>
               {/* Dynamic model info based on selections */}

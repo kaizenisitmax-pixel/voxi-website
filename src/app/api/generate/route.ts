@@ -19,6 +19,7 @@ import {
   buildEnhancedPrompt,
   calculateModelCost,
   estimateProcessingTime,
+  getToolStrength,
   REPLICATE_MODELS,
 } from "@/lib/replicate-model-mapping";
 
@@ -98,13 +99,16 @@ export async function POST(request: Request) {
     const prompt = buildEnhancedPrompt(serviceType, category, style, tool);
     console.log("Prompt:", prompt);
 
-    // 7. Start Replicate prediction
+    // 7. Start Replicate prediction — apply tool-specific strength override
     const version =
       finalModel.version || REPLICATE_MODELS.interior_design.version;
-    const strength = finalModel.strength || 0.8;
+    const toolStrength = getToolStrength(serviceType, tool);
+    const strength = toolStrength ?? finalModel.strength ?? 0.8;
     const scale = finalModel.scale || 9.0;
     const steps = finalModel.steps || 30;
     const resolution = finalModel.resolution || 768;
+
+    console.log(`Tool: ${tool}, Strength override: ${toolStrength}, Final strength: ${strength}`);
 
     const replicateResponse = await fetch(REPLICATE_API_URL, {
       method: "POST",

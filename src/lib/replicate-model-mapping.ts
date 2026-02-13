@@ -363,8 +363,45 @@ export function getStylePromptEnhancement(style: string): string {
   return STYLE_PROMPT_ENHANCEMENTS[style] || '';
 }
 
+// ==========================================
+// TOOL-SPECIFIC STRENGTH OVERRIDES
+// ==========================================
+
+export interface ToolConfig {
+  strength: number;
+  promptPrefix: string;
+}
+
+// Dekorasyon arac ayarlari — modeller destekliyor
+export const DEKORASYON_TOOL_CONFIG: Record<string, ToolConfig> = {
+  redesign:  { strength: 0.8,  promptPrefix: 'Redesign this space,' },
+  furnish:   { strength: 0.7,  promptPrefix: 'Add furniture to empty room,' },
+  remove:    { strength: 0.95, promptPrefix: 'Remove furniture and objects, clean empty room' },
+  wallpaint: { strength: 0.9,  promptPrefix: 'Change wall color,' },
+  floor:     { strength: 0.85, promptPrefix: 'Change floor material,' },
+};
+
+// Yapi arac ayarlari — image-to-image, prompt yonlendirmeli
+export const YAPI_TOOL_CONFIG: Record<string, ToolConfig> = {
+  redesign:  { strength: 0.8,  promptPrefix: 'Design a' },
+  transform: { strength: 0.75, promptPrefix: 'Transform this building/area into' },
+};
+
 /**
- * Tam prompt olusturur (category context + style enhancement)
+ * Arac icin strength override dondurur (hizmet tipi bazli)
+ */
+export function getToolStrength(serviceType: string, tool: string): number | null {
+  if (serviceType === 'dekorasyon') {
+    return DEKORASYON_TOOL_CONFIG[tool]?.strength ?? null;
+  }
+  if (serviceType === 'yapi') {
+    return YAPI_TOOL_CONFIG[tool]?.strength ?? null;
+  }
+  return null;
+}
+
+/**
+ * Tam prompt olusturur (category context + style enhancement + tool-aware prefix)
  */
 export function buildEnhancedPrompt(
   serviceType: string,
@@ -374,13 +411,7 @@ export function buildEnhancedPrompt(
   customPrompt?: string
 ): string {
   const styleEnhancement = getStylePromptEnhancement(style);
-
-  // Service type context
-  const serviceContext: Record<string, string> = {
-    dekorasyon: 'interior design',
-    yapi: 'architectural design, steel construction',
-    iklimlendirme: 'HVAC system visualization',
-  };
+  const readableStyle = style.replace(/_/g, ' ');
 
   // Category context
   const categoryContext: Record<string, string> = {
@@ -389,37 +420,35 @@ export function buildEnhancedPrompt(
     endustriyel: 'industrial',
     diger: 'outdoor',
   };
-
-  // Tool-specific instructions
-  const toolInstructions: Record<string, string> = {
-    redesign: 'transform and redesign this space',
-    furnish: 'add furniture and decor to this empty space',
-    remove_furniture: 'remove all furniture, keep the empty room structure',
-    wall_paint: 'change wall colors and finishes',
-    furnish_commercial: 'add commercial furniture and professional decor',
-    facade_design: 'redesign the exterior facade',
-    signage_design: 'add storefront signage and branding',
-    layout_plan: 'organize equipment and optimize the layout',
-    equipment_placement: 'place industrial equipment efficiently',
-    steel_structure: 'design steel construction elements',
-    safety_visualize: 'add safety markings and equipment',
-    landscape_design: 'create landscape design',
-    pool_design: 'add pool area with surroundings',
-    lighting_design: 'add outdoor lighting design',
-    insulation: 'visualize insulation and energy systems',
-    hvac_design: 'show HVAC system placement',
-    solar_panel: 'add solar panel installation',
-  };
-
-  const serviceDesc = serviceContext[serviceType] || 'interior design';
   const categoryDesc = categoryContext[category] || 'residential';
-  const toolInstruction = toolInstructions[tool] || 'redesign this space';
 
-  let prompt = `${toolInstruction}, ${categoryDesc} ${serviceDesc}`;
+  let prompt = '';
 
-  // Stil ismini ekle
-  const readableStyle = style.replace(/_/g, ' ');
-  prompt += `, ${readableStyle} style`;
+  // ─── YAPI: tool-specific prompt structure ───
+  if (serviceType === 'yapi') {
+    const yapiConfig = YAPI_TOOL_CONFIG[tool];
+    if (yapiConfig) {
+      // e.g. "Design a residential steel villa style building structure"
+      // e.g. "Transform this building/area into industrial celik fabrika style"
+      prompt = `${yapiConfig.promptPrefix} ${categoryDesc} ${readableStyle} style building structure`;
+    } else {
+      prompt = `Design a ${categoryDesc} ${readableStyle} style building structure`;
+    }
+    prompt += ', architectural design, steel construction';
+  }
+  // ─── DEKORASYON: tool-specific prompt prefix ───
+  else if (serviceType === 'dekorasyon') {
+    const dekorConfig = DEKORASYON_TOOL_CONFIG[tool];
+    if (dekorConfig) {
+      prompt = `${dekorConfig.promptPrefix} ${categoryDesc} interior design, ${readableStyle} style`;
+    } else {
+      prompt = `Redesign this space, ${categoryDesc} interior design, ${readableStyle} style`;
+    }
+  }
+  // ─── DEFAULT ───
+  else {
+    prompt = `Redesign this space, ${categoryDesc}, ${readableStyle} style`;
+  }
 
   // Stil enhancement
   if (styleEnhancement) {

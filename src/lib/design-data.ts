@@ -73,6 +73,7 @@ import {
   Eraser,
   Paintbrush,
   Grid3x3,
+  RefreshCw,
   type LucideIcon,
 } from "lucide-react";
 
@@ -246,7 +247,7 @@ export function getStyles(
   return styleMap[key] ?? [];
 }
 
-/* ─── Araçlar ─── */
+/* ─── Araçlar (Hizmet tipine göre dinamik) ─── */
 
 export interface ToolOption {
   id: string;
@@ -255,7 +256,8 @@ export interface ToolOption {
   description: string;
 }
 
-export const tools: ToolOption[] = [
+// Dekorasyon — 5 araç (tüm modeller destekliyor)
+export const dekorasyonTools: ToolOption[] = [
   {
     id: "redesign",
     label: "Yeniden Tasarla",
@@ -287,3 +289,42 @@ export const tools: ToolOption[] = [
     description: "Zemin malzemesini değiştir",
   },
 ];
+
+// Yapı — 2 araç (image-to-image, prompt yönlendirmeli)
+export const yapiTools: ToolOption[] = [
+  {
+    id: "redesign",
+    label: "Yapıyı Tasarla",
+    icon: Wand2,
+    description: "Seçilen stilde yapı tasarla",
+  },
+  {
+    id: "transform",
+    label: "Dönüştür",
+    icon: RefreshCw,
+    description: "Mevcut yapıyı/alanı dönüştür",
+  },
+];
+
+// İklimlendirme — araç yok (modeller null, AI tasarım desteklenmiyor)
+export const iklimlendirmeTools: ToolOption[] = [];
+
+/**
+ * Hizmet tipine göre kullanılabilir araçları döndürür
+ */
+export function getTools(serviceType: string | null): ToolOption[] {
+  if (!serviceType) return [];
+  switch (serviceType) {
+    case "dekorasyon":
+      return dekorasyonTools;
+    case "yapi":
+      return yapiTools;
+    case "iklimlendirme":
+      return iklimlendirmeTools;
+    default:
+      return dekorasyonTools;
+  }
+}
+
+/** @deprecated — Geriye uyumluluk için, getTools() kullanın */
+export const tools: ToolOption[] = dekorasyonTools;
