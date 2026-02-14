@@ -180,25 +180,49 @@ export async function POST(request: Request) {
     const predictionId = prediction.id;
 
     // 8. Save design record
-    const { data: design, error: designError } = await supabase
-      .from("designs")
-      .insert({
+    // Önce yeni kolonlarla dene, başarısız olursa sadece mevcut kolonlarla kaydet
+    let design = null;
+    let designError = null;
+
+    const fullInsert = {
+      user_id: user.id,
+      original_image_url: originalImageUrl,
+      ai_image_url: "",
+      category,
+      style,
+      tool,
+      prompt,
+      processing_status: "processing",
+      replicate_id: predictionId,
+      service_type: serviceType,
+      model_used: finalModel.modelId,
+      estimated_cost: calculateModelCost(finalModel),
+      creativity_level: creativity,
+    };
+
+    const result1 = await supabase.from("designs").insert(fullInsert).select().single();
+
+    if (result1.error?.message?.includes("column")) {
+      // Migration henüz çalışmamış — sadece mevcut kolonlarla kaydet
+      console.warn("New columns not found, using base columns only");
+      const baseInsert = {
         user_id: user.id,
         original_image_url: originalImageUrl,
         ai_image_url: "",
         category,
         style,
         tool,
-        service_type: serviceType,
         prompt,
         processing_status: "processing",
         replicate_id: predictionId,
-        model_used: finalModel.modelId,
-        estimated_cost: calculateModelCost(finalModel),
-        creativity_level: creativity,
-      })
-      .select()
-      .single();
+      };
+      const result2 = await supabase.from("designs").insert(baseInsert).select().single();
+      design = result2.data;
+      designError = result2.error;
+    } else {
+      design = result1.data;
+      designError = result1.error;
+    }
 
     if (designError || !design) {
       console.error("Design insert error:", designError);
