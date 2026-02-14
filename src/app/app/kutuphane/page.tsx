@@ -212,8 +212,8 @@ export default function KutuphanePage() {
                     </h3>
                     <div className="mt-1 flex items-center gap-1.5 sm:gap-2">
                       <span className="text-[10px] text-text-tertiary sm:text-xs">
-                        {design.service_type.charAt(0).toUpperCase() +
-                          design.service_type.slice(1)}
+                        {(design.service_type || "").charAt(0).toUpperCase() +
+                          (design.service_type || "").slice(1)}
                       </span>
                       <span className="text-[10px] text-text-tertiary sm:text-xs">
                         ·

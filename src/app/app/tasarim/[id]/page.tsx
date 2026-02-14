@@ -194,7 +194,7 @@ export default function TasarimDetailPage({
           </Link>
           <div>
             <h1 className="text-lg font-semibold text-text-primary">
-              {design.category.charAt(0).toUpperCase() + design.category.slice(1)} — {styleName}
+              {(design.category || "").charAt(0).toUpperCase() + (design.category || "").slice(1)} — {styleName}
             </h1>
             <p className="text-sm text-text-tertiary">
               {formatDate(design.created_at)}
@@ -289,7 +289,7 @@ export default function TasarimDetailPage({
             <div>
               <p className="text-xs text-text-tertiary">Kategori</p>
               <p className="text-sm font-medium text-text-primary">
-                {design.category.charAt(0).toUpperCase() + design.category.slice(1)}
+                {(design.category || "").charAt(0).toUpperCase() + (design.category || "").slice(1)}
               </p>
             </div>
           </div>
@@ -335,7 +335,7 @@ export default function TasarimDetailPage({
             <div>
               <p className="text-xs text-text-tertiary">Hizmet Tipi</p>
               <p className="text-sm font-medium text-text-primary">
-                {design.service_type.charAt(0).toUpperCase() + design.service_type.slice(1)}
+                {(design.service_type || "").charAt(0).toUpperCase() + (design.service_type || "").slice(1)}
               </p>
             </div>
           </div>

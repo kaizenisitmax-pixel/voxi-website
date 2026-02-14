@@ -16,7 +16,8 @@ import {
 } from "lucide-react";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 
-export function ProfileContent({ user }: { user: SupabaseUser }) {
+export function ProfileContent({ user }: { user: SupabaseUser | null }) {
+  if (!user) return null;
   const router = useRouter();
   const supabaseRef = useRef<ReturnType<typeof createClient> | null>(null);
 
@@ -72,7 +73,7 @@ export function ProfileContent({ user }: { user: SupabaseUser }) {
       <div className="mb-6 rounded-2xl border border-border-light bg-white p-5 shadow-sm">
         <div className="flex items-center gap-4">
           <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-accent-black text-lg font-semibold text-white">
-            {displayName.charAt(0).toUpperCase()}
+            {(displayName || "K").charAt(0).toUpperCase()}
           </div>
           <div className="min-w-0 flex-1">
             <h2 className="truncate text-base font-semibold text-text-primary">
