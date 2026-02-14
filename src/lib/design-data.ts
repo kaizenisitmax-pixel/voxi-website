@@ -651,3 +651,51 @@ export function getDetailQuestions(
   const key = `${categoryId}_${serviceId}`;
   return detailQuestionsMap[key] ?? [];
 }
+
+/* ─── Quick Tags (Gelişmiş mod — chip butonlar, prompt'a eklenir) ─── */
+
+const quickTagsMap: Record<string, string[]> = {
+  ev_dekorasyon: [
+    "açık mutfak", "şömine", "parke", "mermer", "gizli LED", "panoramik pencere",
+    "yüksek tavan", "kitaplık duvarı", "minimal mobilya", "doğal ışık", "sıcak tonlar",
+    "soğuk tonlar", "pastel", "ahşap aksanlar",
+  ],
+  ticari_dekorasyon: [
+    "lobi", "bar tezgahı", "açık büfe", "VIP bölüm", "dış mekan terası",
+    "sahne/platform", "ambient aydınlatma", "premium mobilya", "kurumsal tarz",
+  ],
+  endustriyel_dekorasyon: [
+    "açık tavan", "endüstriyel aydınlatma", "beton zemin", "exposed brick",
+    "ergonomik mobilya", "marka duvarı",
+  ],
+  diger_dekorasyon: [
+    "havuz", "pergola", "barbekü alanı", "oturma grubu", "bahçe aydınlatma",
+    "çim alan", "taş yol", "su öğesi", "duvar bitkileri",
+  ],
+  ev_yapi: [
+    "2 kat", "3 kat", "teras", "balkon", "garaj", "havuz", "cam cephe",
+    "taş kaplama", "ahşap cephe", "yeşil çatı", "güneş paneli", "iç avlu",
+    "100m²", "200m²", "300m²", "geniş pencereler",
+  ],
+  ticari_yapi: [
+    "giriş saçağı", "cam giydirme", "tabela alanı", "otopark", "yükleme rampası",
+    "çok katlı", "açık ofis", "lobby", "teras kafe",
+  ],
+  endustriyel_yapi: [
+    "çelik konstrüksiyon", "sandviç panel", "cam cephe", "yüksek tavan", "köprü vinç",
+    "yükleme rampası", "ofis bölümü", "12m yükseklik", "20m açıklık", "30m açıklık",
+    "düz çatı", "portal çerçeve", "doğal aydınlatma",
+  ],
+  diger_yapi: [
+    "çelik pergola", "cam korkuluk", "ahşap deck", "led aydınlatma",
+    "paslanmaz çelik", "modern tasarım",
+  ],
+};
+
+export function getQuickTags(
+  categoryId: string | null,
+  serviceId: string | null
+): string[] {
+  if (!categoryId || !serviceId) return [];
+  return quickTagsMap[`${categoryId}_${serviceId}`] ?? [];
+}

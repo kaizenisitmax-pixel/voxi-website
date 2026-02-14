@@ -4,8 +4,6 @@ import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
-  ArrowLeft,
-  ArrowRight,
   Upload,
   Camera,
   X,
@@ -15,6 +13,9 @@ import {
   AlertCircle,
   MessageCircle,
   ClipboardList,
+  ChevronDown,
+  ChevronUp,
+  Wand2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -23,6 +24,7 @@ import {
   getStyles,
   getTools,
   getDetailQuestions,
+  getQuickTags,
   photoTips,
 } from "@/lib/design-data";
 import {
@@ -30,53 +32,40 @@ import {
   estimateProcessingTime,
   calculateModelCost,
   buildEnhancedPrompt,
+  creativityToParams,
   REPLICATE_MODELS,
 } from "@/lib/replicate-model-mapping";
 import type { StyleOption, QuestionGroup } from "@/lib/design-data";
 
-type Step =
-  | "category"
-  | "service"
-  | "style"
-  | "iklimlendirme-info"
-  | "photo"
-  | "tool"
-  | "details"
-  | "generating";
-
-const stepLabels: Record<string, { num: number; title: string }> = {
-  category: { num: 1, title: "Kategori" },
-  service: { num: 2, title: "Hizmet Tipi" },
-  style: { num: 3, title: "Stil" },
-  "iklimlendirme-info": { num: 4, title: "Bilgi" },
-  photo: { num: 4, title: "Fotoğraf" },
-  tool: { num: 5, title: "Araç" },
-  details: { num: 6, title: "Detaylar" },
-};
-
-function getStepOrder(serviceType: string | null): Step[] {
-  if (serviceType === "iklimlendirme") {
-    return ["category", "service", "style", "iklimlendirme-info"];
-  }
-  return ["category", "service", "style", "photo", "tool", "details", "generating"];
-}
+type DesignTab = "quick" | "advanced";
 
 export default function TasarlaPage() {
   const router = useRouter();
-  const [step, setStep] = useState<Step>("category");
+
+  /* ── Core selections ── */
   const [category, setCategory] = useState<string | null>(null);
   const [service, setService] = useState<string | null>(null);
   const [style, setStyle] = useState<string | null>(null);
+  const [tool, setTool] = useState<string>("redesign");
+  const [creativity, setCreativity] = useState(50);
+
+  /* ── Photo ── */
   const [photo, setPhoto] = useState<string | null>(null);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
-  const [tool, setTool] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
-  // Details state
-  const [details, setDetails] = useState<Record<string, string[]>>({});
+  /* ── Tab & Advanced mode ── */
+  const [tab, setTab] = useState<DesignTab>("quick");
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [freeText, setFreeText] = useState("");
+  const [negativePrompt, setNegativePrompt] = useState("");
+  const [showNegative, setShowNegative] = useState(false);
 
-  // Generation state
+  /* ── Details (for iklimlendirme) ── */
+  const [details, setDetails] = useState<Record<string, string[]>>({});
+
+  /* ── Generation ── */
+  const [isGenerating, setIsGenerating] = useState(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [generationInfo, setGenerationInfo] = useState<{
     modelUsed: string;
@@ -86,16 +75,27 @@ export default function TasarlaPage() {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const stepOrder = getStepOrder(service);
-  const stepIdx = stepOrder.indexOf(step);
-  const currentStepMeta = step !== "generating" ? stepLabels[step] : null;
+  /* ── Derived ── */
   const availableStyles = getStyles(category, service);
   const availableTools = getTools(service);
+  const quickTags = getQuickTags(category, service);
   const detailQuestions = getDetailQuestions(category, service);
+  const isIklimlendirme = service === "iklimlendirme";
+  const canGenerate = !!(photoFile && category && service && style && !isIklimlendirme);
 
-  // Total step count for indicator
-  const totalSteps = service === "iklimlendirme" ? 4 : 6;
+  const tip = service ? photoTips[service] : null;
+
+  // Reset dependent state when category/service changes
+  useEffect(() => {
+    setStyle(null);
+    setTool("redesign");
+    setSelectedTags([]);
+    setFreeText("");
+    setNegativePrompt("");
+    setDetails({});
+  }, [category, service]);
 
   // Cleanup polling/timer on unmount
   useEffect(() => {
@@ -105,15 +105,7 @@ export default function TasarlaPage() {
     };
   }, []);
 
-  const goNext = () => {
-    const next = stepOrder[stepIdx + 1];
-    if (next) setStep(next);
-  };
-  const goBack = () => {
-    const prev = stepOrder[stepIdx - 1];
-    if (prev) setStep(prev);
-  };
-
+  /* ── Image handlers ── */
   const handleImageUpload = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
@@ -135,57 +127,60 @@ export default function TasarlaPage() {
     }
   }, []);
 
-  // Toggle detail chip selection
+  /* ── Tag toggle ── */
+  const toggleTag = useCallback((tag: string) => {
+    setSelectedTags((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
+    );
+  }, []);
+
+  /* ── Detail chip toggle (for iklimlendirme form) ── */
   const toggleDetail = useCallback(
     (groupId: string, option: string, multiple: boolean) => {
       setDetails((prev) => {
         const current = prev[groupId] || [];
         if (multiple) {
-          // Multi-select: toggle
           const next = current.includes(option)
             ? current.filter((o) => o !== option)
             : [...current, option];
           return { ...prev, [groupId]: next };
-        } else {
-          // Single-select: replace or deselect
-          const next = current[0] === option ? [] : [option];
-          return { ...prev, [groupId]: next };
         }
+        return { ...prev, [groupId]: current[0] === option ? [] : [option] };
       });
     },
     []
   );
 
-  // Build customPrompt from quick selections + free text
+  /* ── Custom prompt from tags + freeText ── */
   const customPrompt = useMemo(() => {
     const parts: string[] = [];
-    for (const selections of Object.values(details)) {
-      if (selections.length > 0) {
-        parts.push(selections.join(", "));
-      }
-    }
-    if (freeText.trim()) {
-      parts.push(freeText.trim());
-    }
+    if (selectedTags.length > 0) parts.push(selectedTags.join(", "));
+    if (freeText.trim()) parts.push(freeText.trim());
     return parts.join(", ");
-  }, [details, freeText]);
+  }, [selectedTags, freeText]);
 
-  // Preview prompt (computed live)
+  /* ── Preview prompt ── */
   const previewPrompt = useMemo(() => {
-    if (!category || !service || !style || !tool) return "";
+    if (!category || !service || !style) return "";
     return buildEnhancedPrompt(service, category, style, tool, customPrompt || undefined);
   }, [category, service, style, tool, customPrompt]);
 
-  // Real AI generation
-  const handleGenerate = async () => {
-    if (!photoFile || !category || !service || !style || !tool) return;
+  /* ── Model info ── */
+  const modelInfo = useMemo(() => {
+    if (!category || !service || !style) return null;
+    const m = getModelForDesign(service, category, style);
+    return m || REPLICATE_MODELS.interior_design;
+  }, [category, service, style]);
 
-    setStep("generating");
+  /* ── Generate ── */
+  const handleGenerate = async () => {
+    if (!photoFile || !category || !service || !style) return;
+
+    setIsGenerating(true);
     setGenerationError(null);
     setElapsedSeconds(0);
 
-    const modelConfig = getModelForDesign(service, category, style);
-    const finalModel = modelConfig || REPLICATE_MODELS.interior_design;
+    const finalModel = modelInfo || REPLICATE_MODELS.interior_design;
     setGenerationInfo({
       modelUsed: finalModel.modelId,
       estimatedTime: estimateProcessingTime(finalModel),
@@ -203,9 +198,8 @@ export default function TasarlaPage() {
       formData.append("serviceType", service);
       formData.append("style", style);
       formData.append("tool", tool);
-      if (customPrompt) {
-        formData.append("customPrompt", customPrompt);
-      }
+      formData.append("creativity", creativity.toString());
+      if (customPrompt) formData.append("customPrompt", customPrompt);
 
       const startRes = await fetch("/api/generate", {
         method: "POST",
@@ -214,12 +208,12 @@ export default function TasarlaPage() {
       const startData = await startRes.json();
 
       if (!startRes.ok) {
-        throw new Error(startData.error || "Tasarim baslatilamadi");
+        throw new Error(startData.error || "Tasarım başlatılamadı");
       }
 
       const { designId, predictionId } = startData;
 
-      const pollStatus = async (): Promise<void> => {
+      const pollStatus = async () => {
         try {
           const statusRes = await fetch(
             `/api/generate/status?predictionId=${predictionId}&designId=${designId}`
@@ -235,7 +229,7 @@ export default function TasarlaPage() {
           if (statusData.status === "failed") {
             if (pollingRef.current) clearInterval(pollingRef.current);
             if (timerRef.current) clearInterval(timerRef.current);
-            setGenerationError(statusData.error || "Tasarim basarisiz oldu");
+            setGenerationError(statusData.error || "Tasarım başarısız oldu");
             return;
           }
         } catch {
@@ -248,301 +242,93 @@ export default function TasarlaPage() {
     } catch (error) {
       if (timerRef.current) clearInterval(timerRef.current);
       setGenerationError(
-        error instanceof Error ? error.message : "Beklenmeyen bir hata olustu"
+        error instanceof Error ? error.message : "Beklenmeyen bir hata oluştu"
       );
     }
   };
 
-  return (
-    <div className="mx-auto max-w-2xl px-4 py-6 md:py-8">
-      {/* ── Step indicator ── */}
-      {step !== "generating" && (
-        <>
-          {/* Back + Title */}
-          <div className="mb-4 flex items-center gap-3">
-            {stepIdx > 0 ? (
-              <button
-                onClick={goBack}
-                className="flex h-9 w-9 items-center justify-center rounded-xl border border-border-light bg-white text-text-secondary hover:text-text-primary transition-colors btn-press"
-              >
-                <ArrowLeft className="h-4 w-4" />
-              </button>
-            ) : (
-              <div className="w-9" />
-            )}
-            <h1 className="flex-1 text-lg font-semibold text-text-primary">
-              {currentStepMeta?.title}
-            </h1>
-          </div>
-
-          {/* Numbered step badges: 1-6 (or 1-4 for iklimlendirme) */}
-          <div className="mb-8 flex items-center justify-center gap-1.5 md:gap-2">
-            {Array.from({ length: totalSteps }, (_, i) => i + 1).map((num, i) => {
-              const active = currentStepMeta && currentStepMeta.num >= num;
-              const current = currentStepMeta?.num === num;
-              return (
-                <div key={num} className="flex items-center gap-1.5 md:gap-2">
-                  <div
-                    className={cn(
-                      "flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-semibold transition-colors md:h-8 md:w-8 md:text-xs",
-                      current
-                        ? "bg-accent-black text-white"
-                        : active
-                          ? "bg-accent-black/80 text-white"
-                          : "bg-border-light text-text-tertiary"
-                    )}
-                  >
-                    {num}
-                  </div>
-                  {i < totalSteps - 1 && (
-                    <div
-                      className={cn(
-                        "h-0.5 w-4 rounded-full transition-colors md:w-8",
-                        active ? "bg-accent-black" : "bg-border-light"
-                      )}
-                    />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </>
-      )}
-
-      {/* ══════════════════════════════════════════
-          ADIM 1: KATEGORİ SEÇ
-         ══════════════════════════════════════════ */}
-      {step === "category" && (
-        <div className="space-y-6">
-          <p className="text-sm text-text-secondary">
-            Tasarım yapılacak mekanın türünü seç.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {categories.map((cat) => (
-              <button
-                key={cat.id}
-                onClick={() => {
-                  setCategory(cat.id);
-                  setStyle(null);
-                  setDetails({});
-                  setFreeText("");
-                  goNext();
-                }}
-                className={cn(
-                  "inline-flex items-center gap-2 rounded-xl border px-5 py-3 text-sm font-medium transition-all btn-press",
-                  category === cat.id
-                    ? "border-accent-black bg-accent-black text-white"
-                    : "border-border-light bg-white text-text-primary hover:border-text-tertiary"
-                )}
-              >
-                <cat.icon className="h-4 w-4" />
-                {cat.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ══════════════════════════════════════════
-          ADIM 2: HİZMET TİPİ SEÇ
-         ══════════════════════════════════════════ */}
-      {step === "service" && (
-        <div className="space-y-6">
-          <p className="text-sm text-text-secondary">
-            Ne tür bir değişiklik yapmak istiyorsun?
-          </p>
-          <div className="space-y-3">
-            {serviceTypes.map((svc) => (
-              <button
-                key={svc.id}
-                onClick={() => {
-                  setService(svc.id);
-                  setStyle(null);
-                  setTool(null);
-                  setDetails({});
-                  setFreeText("");
-                  goNext();
-                }}
-                className={cn(
-                  "flex w-full items-center gap-4 rounded-2xl border p-5 text-left transition-all btn-press",
-                  service === svc.id
-                    ? "border-2 border-accent-black bg-selected-bg"
-                    : "border border-border-light bg-white hover:border-text-tertiary"
-                )}
-              >
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-warm-bg">
-                  <svc.icon className="h-5 w-5 text-text-primary" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-semibold text-text-primary">
-                    {svc.label}
-                  </h3>
-                  <p className="mt-0.5 text-xs text-text-tertiary">
-                    {svc.description}
-                  </p>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ══════════════════════════════════════════
-          ADIM 3: STİL SEÇ (DİNAMİK)
-         ══════════════════════════════════════════ */}
-      {step === "style" && (
-        <div className="space-y-6">
-          <p className="text-sm text-text-secondary">
-            Mekana uygulanacak tasarım dilini seç.
-          </p>
-          <div className="-mx-4 px-4 md:mx-0 md:px-0">
-            <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none md:grid md:grid-cols-5 md:overflow-visible">
-              {availableStyles.map((s: StyleOption) => (
-                <button
-                  key={s.id}
-                  onClick={() => setStyle(s.id)}
-                  className={cn(
-                    "flex w-[100px] shrink-0 flex-col items-center gap-2.5 rounded-2xl border p-4 transition-all btn-press md:w-auto",
-                    style === s.id
-                      ? "border-2 border-accent-black bg-selected-bg"
-                      : "border border-border-light bg-white hover:border-text-tertiary"
-                  )}
-                >
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-warm-bg">
-                    <s.icon className="h-5 w-5 text-text-primary" />
-                  </div>
-                  <span className="text-center text-[11px] font-medium leading-tight text-text-primary md:text-xs">
-                    {s.label}
-                  </span>
-                </button>
-              ))}
+  /* ═══════════════════════════════════════════
+     GENERATING OVERLAY
+     ═══════════════════════════════════════════ */
+  if (isGenerating) {
+    return (
+      <div className="flex min-h-[70vh] flex-col items-center justify-center px-4">
+        {generationError ? (
+          <>
+            <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-3xl border border-danger/20 bg-danger/5 shadow-sm">
+              <AlertCircle className="h-8 w-8 text-danger" />
             </div>
-          </div>
-
-          {availableStyles.length === 0 && (
-            <div className="rounded-2xl border border-border-light bg-white p-8 text-center">
-              <p className="text-sm text-text-tertiary">
-                Lütfen önce kategori ve hizmet tipi seçin.
-              </p>
-            </div>
-          )}
-
-          <Button
-            className="h-12 w-full rounded-xl bg-accent-black text-base font-medium text-white hover:bg-accent-black/90 btn-press"
-            disabled={!style}
-            onClick={() => {
-              if (service === "iklimlendirme") {
-                setStep("iklimlendirme-info");
-              } else {
-                goNext();
-              }
-            }}
-          >
-            Devam Et
-            <ArrowRight className="ml-2 h-4 w-4" />
-          </Button>
-        </div>
-      )}
-
-      {/* ══════════════════════════════════════════
-          İKLİMLENDİRME BİLGİ
-         ══════════════════════════════════════════ */}
-      {step === "iklimlendirme-info" && (
-        <div className="space-y-6">
-          <div className="rounded-2xl border border-border-light bg-white p-8 text-center shadow-sm">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-warm-bg">
-              <Info className="h-7 w-7 text-text-tertiary" />
-            </div>
-            <h3 className="text-lg font-semibold text-text-primary">
-              AI Tasarım Yakında
-            </h3>
-            <p className="mt-3 text-sm leading-relaxed text-text-secondary">
-              İklimlendirme kategorisinde AI görsel tasarım henüz desteklenmiyor.
-              Şimdilik uzmanlarımızla iletişime geçerek projeniz için profesyonel
-              destek alabilirsiniz.
+            <h2 className="text-xl font-semibold text-text-primary">
+              Tasarım başarısız
+            </h2>
+            <p className="mt-2 max-w-sm text-center text-sm text-text-secondary">
+              {generationError}
             </p>
-          </div>
-
-          {/* İklimlendirme detay soruları (teklif talebi) */}
-          {detailQuestions.length > 0 && (
-            <div className="space-y-5">
-              <h3 className="text-sm font-semibold text-text-primary">
-                Projenizi tanımlayın
-              </h3>
-              {detailQuestions.map((group: QuestionGroup) => (
-                <div key={group.id}>
-                  <p className="mb-2 text-xs font-medium text-text-secondary">
-                    {group.label}
-                    {group.multiple && (
-                      <span className="ml-1 text-text-tertiary">(çoklu seçim)</span>
-                    )}
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {group.options.map((option) => {
-                      const isSelected = (details[group.id] || []).includes(option);
-                      return (
-                        <button
-                          key={option}
-                          onClick={() => toggleDetail(group.id, option, group.multiple)}
-                          className={cn(
-                            "rounded-lg border px-3 py-1.5 text-xs font-medium transition-all btn-press",
-                            isSelected
-                              ? "border-accent-black bg-accent-black text-white"
-                              : "border-border-light bg-white text-text-primary hover:border-text-tertiary"
-                          )}
-                        >
-                          {option}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
+            <Button
+              className="mt-6 h-12 rounded-xl bg-accent-black text-base font-medium text-white hover:bg-accent-black/90 btn-press"
+              onClick={() => {
+                setIsGenerating(false);
+                setGenerationError(null);
+                setGenerationInfo(null);
+              }}
+            >
+              Tekrar Dene
+            </Button>
+          </>
+        ) : (
+          <>
+            <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-3xl border border-border-light bg-white shadow-sm">
+              <Loader2 className="h-8 w-8 animate-spin text-text-primary" />
             </div>
-          )}
-
-          <Button
-            className="h-14 w-full rounded-xl bg-accent-black text-base font-semibold text-white hover:bg-accent-black/90 btn-press"
-            onClick={() => router.push("/app/sohbetler")}
-          >
-            <MessageCircle className="mr-2 h-5 w-5" />
-            Uzmanla İletişime Geç
-          </Button>
-          <button
-            onClick={() => {
-              setService(null);
-              setStyle(null);
-              setStep("category");
-            }}
-            className="w-full text-center text-sm text-text-tertiary hover:text-text-primary transition-colors"
-          >
-            Farklı bir hizmet tipi seç
-          </button>
-        </div>
-      )}
-
-      {/* ══════════════════════════════════════════
-          ADIM 4: FOTOĞRAF YÜKLE
-         ══════════════════════════════════════════ */}
-      {step === "photo" && (
-        <div className="space-y-6">
-          <p className="text-sm text-text-secondary">
-            Dönüştürmek istediğin mekanın net bir fotoğrafını seç.
-          </p>
-
-          {service && photoTips[service] && (
-            <div className="flex items-start gap-3 rounded-xl border border-border-light bg-white p-4">
-              <Info className="mt-0.5 h-4 w-4 shrink-0 text-text-tertiary" />
-              <p className="text-xs leading-relaxed text-text-secondary">
-                {photoTips[service]}
-              </p>
+            <h2 className="text-xl font-semibold text-text-primary">
+              Tasarım oluşturuluyor...
+            </h2>
+            <p className="mt-2 text-sm text-text-secondary">
+              {generationInfo
+                ? `Tahmini süre: ~${generationInfo.estimatedTime} saniye`
+                : "Bu işlem birkaç saniye sürebilir."}
+            </p>
+            <p className="mt-1 text-xs text-text-tertiary">
+              Geçen süre: {elapsedSeconds}s
+            </p>
+            <div className="mt-6 h-1.5 w-48 overflow-hidden rounded-full bg-border-light">
+              <div
+                className="h-full rounded-full bg-accent-black transition-all duration-1000 ease-linear"
+                style={{
+                  width: generationInfo
+                    ? `${Math.min((elapsedSeconds / generationInfo.estimatedTime) * 100, 95)}%`
+                    : "50%",
+                }}
+              />
             </div>
-          )}
+            {generationInfo && (
+              <div className="mt-6 rounded-xl border border-border-light bg-white px-4 py-3 text-center">
+                <p className="text-[11px] text-text-tertiary">
+                  Model: {generationInfo.modelUsed.split("/").pop()}
+                </p>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    );
+  }
 
+  /* ═══════════════════════════════════════════
+     MAIN LAYOUT — TEK EKRAN
+     ═══════════════════════════════════════════ */
+  return (
+    <div className="mx-auto max-w-6xl px-4 py-6 md:py-8">
+      <div className="grid gap-8 md:grid-cols-2">
+        {/* ────────────────────────────────
+            SOL PANEL — Fotoğraf + Yaratıcılık
+            ──────────────────────────────── */}
+        <div className="space-y-5">
+          {/* Photo upload */}
           {!photo ? (
             <div
               className={cn(
-                "flex flex-col items-center justify-center rounded-2xl border-2 border-dashed p-12 transition-colors",
+                "flex min-h-[300px] flex-col items-center justify-center rounded-2xl border-2 border-dashed transition-colors md:min-h-[400px]",
                 isDragging
                   ? "border-accent-black bg-selected-bg"
                   : "border-border-light bg-white"
@@ -575,6 +361,7 @@ export default function TasarlaPage() {
                   </span>
                 </Button>
                 <input
+                  ref={fileInputRef}
                   type="file"
                   accept="image/*"
                   className="hidden"
@@ -587,10 +374,13 @@ export default function TasarlaPage() {
               <img
                 src={photo}
                 alt="Yüklenen fotoğraf"
-                className="aspect-video w-full object-cover"
+                className="aspect-4/3 w-full object-cover"
               />
               <button
-                onClick={() => setPhoto(null)}
+                onClick={() => {
+                  setPhoto(null);
+                  setPhotoFile(null);
+                }}
                 className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm hover:bg-black/70 transition-colors"
               >
                 <X className="h-4 w-4" />
@@ -616,267 +406,355 @@ export default function TasarlaPage() {
             </div>
           )}
 
-          <Button
-            className="h-12 w-full rounded-xl bg-accent-black text-base font-medium text-white hover:bg-accent-black/90 btn-press"
-            disabled={!photo}
-            onClick={goNext}
-          >
-            Devam Et
-            <ArrowRight className="ml-2 h-4 w-4" />
-          </Button>
+          {/* Photo tip */}
+          {tip && (
+            <div className="flex items-start gap-3 rounded-xl border border-border-light bg-white p-4">
+              <Info className="mt-0.5 h-4 w-4 shrink-0 text-text-tertiary" />
+              <p className="text-xs leading-relaxed text-text-secondary">{tip}</p>
+            </div>
+          )}
+
+          {/* Creativity slider */}
+          <div className="rounded-2xl border border-border-light bg-white p-5">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-sm font-medium text-text-primary">Yaratıcılık</span>
+              <span className="text-xs tabular-nums text-text-tertiary">{creativity}%</span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={creativity}
+              onChange={(e) => setCreativity(Number(e.target.value))}
+              className="w-full accent-accent-black"
+            />
+            <div className="mt-1.5 flex justify-between text-[10px] text-text-tertiary">
+              <span>Orijinale Sadık</span>
+              <span>Yaratıcı</span>
+            </div>
+          </div>
         </div>
-      )}
 
-      {/* ══════════════════════════════════════════
-          ADIM 5: ARAÇ SEÇ
-         ══════════════════════════════════════════ */}
-      {step === "tool" && (
-        <div className="space-y-6">
-          <p className="text-sm text-text-secondary">
-            Ne yapmak istersiniz?
-          </p>
-
-          <div
-            className={cn(
-              "grid gap-3",
-              availableTools.length <= 2 ? "grid-cols-2" : "grid-cols-2 md:grid-cols-5"
-            )}
-          >
-            {availableTools.map((t) => (
-              <button
-                key={t.id}
-                onClick={() => setTool(t.id)}
-                className={cn(
-                  "flex flex-col items-center gap-2 rounded-2xl border p-4 transition-all btn-press",
-                  tool === t.id
-                    ? "border-2 border-accent-black bg-selected-bg"
-                    : "border border-border-light bg-white hover:border-text-tertiary"
-                )}
-              >
-                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-warm-bg">
-                  <t.icon className="h-5 w-5 text-text-primary" />
-                </div>
-                <span className="text-xs font-medium text-text-primary text-center">
-                  {t.label}
-                </span>
-                <span className="text-[10px] text-text-tertiary text-center leading-tight hidden md:block">
-                  {t.description}
-                </span>
-              </button>
-            ))}
+        {/* ────────────────────────────────
+            SAĞ PANEL — Seçimler
+            ──────────────────────────────── */}
+        <div className="space-y-5">
+          {/* Tab switcher */}
+          <div className="flex rounded-xl border border-border-light bg-white p-1">
+            <button
+              onClick={() => setTab("quick")}
+              className={cn(
+                "flex-1 rounded-lg py-2.5 text-sm font-medium transition-colors",
+                tab === "quick"
+                  ? "bg-accent-black text-white"
+                  : "text-text-secondary hover:text-text-primary"
+              )}
+            >
+              Hızlı
+            </button>
+            <button
+              onClick={() => setTab("advanced")}
+              className={cn(
+                "flex-1 rounded-lg py-2.5 text-sm font-medium transition-colors",
+                tab === "advanced"
+                  ? "bg-accent-black text-white"
+                  : "text-text-secondary hover:text-text-primary"
+              )}
+            >
+              Gelişmiş
+            </button>
           </div>
 
-          <Button
-            className="h-12 w-full rounded-xl bg-accent-black text-base font-medium text-white hover:bg-accent-black/90 btn-press"
-            disabled={!tool}
-            onClick={goNext}
-          >
-            Devam Et
-            <ArrowRight className="ml-2 h-4 w-4" />
-          </Button>
-        </div>
-      )}
-
-      {/* ══════════════════════════════════════════
-          ADIM 6: TASARIM DETAYLARI (PROMPT BUILDER)
-         ══════════════════════════════════════════ */}
-      {step === "details" && (
-        <div className="space-y-6">
-          <p className="text-sm text-text-secondary">
-            Tasarımını detaylandır. Tüm seçenekler opsiyonel — hiç seçmeden de devam edebilirsin.
-          </p>
-
-          {/* Dinamik hızlı seçenek grupları */}
-          {detailQuestions.length > 0 && (
-            <div className="space-y-5">
-              {detailQuestions.map((group: QuestionGroup) => (
-                <div key={group.id}>
-                  <p className="mb-2 text-xs font-medium text-text-secondary">
-                    {group.label}
-                    {group.multiple && (
-                      <span className="ml-1 text-text-tertiary">(çoklu seçim)</span>
-                    )}
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {group.options.map((option) => {
-                      const isSelected = (details[group.id] || []).includes(option);
-                      return (
-                        <button
-                          key={option}
-                          onClick={() => toggleDetail(group.id, option, group.multiple)}
-                          className={cn(
-                            "rounded-lg border px-3 py-1.5 text-xs font-medium transition-all btn-press",
-                            isSelected
-                              ? "border-accent-black bg-accent-black text-white"
-                              : "border-border-light bg-white text-text-primary hover:border-text-tertiary"
-                          )}
-                        >
-                          {option}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+          {/* ── 1. Mekan (Category) ── */}
+          <div>
+            <p className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
+              Mekan
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {categories.map((cat) => (
+                <button
+                  key={cat.id}
+                  onClick={() => setCategory(cat.id)}
+                  className={cn(
+                    "inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium transition-all btn-press",
+                    category === cat.id
+                      ? "border-accent-black bg-accent-black text-white"
+                      : "border-border-light bg-white text-text-primary hover:border-text-tertiary"
+                  )}
+                >
+                  <cat.icon className="h-4 w-4" />
+                  {cat.label}
+                </button>
               ))}
             </div>
-          )}
+          </div>
 
-          {/* Serbest metin alanı */}
+          {/* ── 2. Hizmet (Service Type) ── */}
           <div>
-            <p className="mb-2 text-xs font-medium text-text-secondary">
-              Eklemek İstediğin Detaylar
+            <p className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
+              Hizmet
             </p>
-            <textarea
-              value={freeText}
-              onChange={(e) => setFreeText(e.target.value)}
-              placeholder="Örn: Geniş pencereler, açık mutfak, bahçeye bakan teras..."
-              rows={3}
-              className="w-full rounded-xl border border-border-light bg-white px-4 py-3 text-sm text-text-primary placeholder:text-text-tertiary focus:border-accent-black focus:outline-none focus:ring-2 focus:ring-accent-black/20 resize-none"
-            />
+            <div className="flex flex-wrap gap-2">
+              {serviceTypes.map((svc) => (
+                <button
+                  key={svc.id}
+                  onClick={() => setService(svc.id)}
+                  className={cn(
+                    "inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium transition-all btn-press",
+                    service === svc.id
+                      ? "border-accent-black bg-accent-black text-white"
+                      : "border-border-light bg-white text-text-primary hover:border-text-tertiary"
+                  )}
+                >
+                  <svc.icon className="h-4 w-4" />
+                  {svc.label}
+                </button>
+              ))}
+            </div>
           </div>
 
-          {/* Prompt önizleme */}
-          {previewPrompt && (
-            <div className="rounded-xl bg-[#F0EDE8] p-4">
-              <div className="mb-2 flex items-center gap-2">
-                <ClipboardList className="h-3.5 w-3.5 text-text-tertiary" />
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
-                  Oluşan Tasarım Promptu
-                </span>
+          {/* ── İklimlendirme Uyarı ── */}
+          {isIklimlendirme && (
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-border-light bg-white p-6 text-center shadow-sm">
+                <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-warm-bg">
+                  <Info className="h-6 w-6 text-text-tertiary" />
+                </div>
+                <h3 className="text-base font-semibold text-text-primary">
+                  AI Tasarım Yakında
+                </h3>
+                <p className="mt-2 text-sm leading-relaxed text-text-secondary">
+                  İklimlendirme kategorisinde AI görsel tasarım henüz desteklenmiyor.
+                  Uzmanlarımızla iletişime geçerek profesyonel destek alabilirsiniz.
+                </p>
               </div>
-              <p className="text-xs leading-relaxed text-text-secondary font-mono break-words">
-                &ldquo;{previewPrompt}&rdquo;
-              </p>
-              {/* Model info */}
-              {category && service && style && (() => {
-                const m = getModelForDesign(service, category, style);
-                const model = m || REPLICATE_MODELS.interior_design;
-                return (
-                  <p className="mt-2 text-[10px] text-text-tertiary">
-                    Model: {model.modelId.split("/").pop()} (~{estimateProcessingTime(model)}s, ${calculateModelCost(model).toFixed(3)})
-                  </p>
-                );
-              })()}
-            </div>
-          )}
 
-          {/* Özet kartı */}
-          <div className="rounded-2xl border border-border-light bg-white p-5 shadow-sm">
-            <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
-              Özet
-            </h3>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-text-tertiary">Kategori</span>
-                <span className="font-medium text-text-primary">
-                  {categories.find((c) => c.id === category)?.label ?? "—"}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-text-tertiary">Hizmet</span>
-                <span className="font-medium text-text-primary">
-                  {serviceTypes.find((s) => s.id === service)?.label ?? "—"}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-text-tertiary">Stil</span>
-                <span className="font-medium text-text-primary">
-                  {getStyles(category, service).find((s) => s.id === style)?.label ?? "—"}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-text-tertiary">Araç</span>
-                <span className="font-medium text-text-primary">
-                  {availableTools.find((t) => t.id === tool)?.label ?? "—"}
-                </span>
-              </div>
-              {customPrompt && (
-                <div className="flex justify-between border-t border-border-light pt-2">
-                  <span className="text-text-tertiary">Detaylar</span>
-                  <span className="font-medium text-text-primary text-xs text-right max-w-[60%] truncate">
-                    {customPrompt.length > 60 ? customPrompt.slice(0, 60) + "..." : customPrompt}
-                  </span>
+              {/* İklimlendirme detail questions */}
+              {detailQuestions.length > 0 && (
+                <div className="space-y-4">
+                  <p className="text-xs font-semibold text-text-primary">Projenizi tanımlayın</p>
+                  {detailQuestions.map((group: QuestionGroup) => (
+                    <div key={group.id}>
+                      <p className="mb-2 text-xs font-medium text-text-secondary">
+                        {group.label}
+                        {group.multiple && (
+                          <span className="ml-1 text-text-tertiary">(çoklu seçim)</span>
+                        )}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {group.options.map((option) => {
+                          const isSelected = (details[group.id] || []).includes(option);
+                          return (
+                            <button
+                              key={option}
+                              onClick={() => toggleDetail(group.id, option, group.multiple)}
+                              className={cn(
+                                "rounded-lg border px-3 py-1.5 text-xs font-medium transition-all btn-press",
+                                isSelected
+                                  ? "border-accent-black bg-accent-black text-white"
+                                  : "border-border-light bg-white text-text-primary hover:border-text-tertiary"
+                              )}
+                            >
+                              {option}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
-            </div>
-          </div>
 
-          {/* Tasarımı Başlat */}
-          <Button
-            className="h-14 w-full rounded-xl bg-accent-black text-base font-semibold text-white hover:bg-accent-black/90 btn-press"
-            onClick={handleGenerate}
-          >
-            <Sparkles className="mr-2 h-5 w-5" />
-            Tasarımı Başlat
-            <ArrowRight className="ml-2 h-4 w-4" />
-          </Button>
-        </div>
-      )}
-
-      {/* ══════════════════════════════════════════
-          OLUŞTURULUYOR
-         ══════════════════════════════════════════ */}
-      {step === "generating" && (
-        <div className="flex flex-col items-center justify-center py-24">
-          {generationError ? (
-            <>
-              <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-3xl border border-danger/20 bg-danger/5 shadow-sm">
-                <AlertCircle className="h-8 w-8 text-danger" />
-              </div>
-              <h2 className="text-xl font-semibold text-text-primary">
-                Tasarım başarısız
-              </h2>
-              <p className="mt-2 max-w-sm text-center text-sm text-text-secondary">
-                {generationError}
-              </p>
               <Button
-                className="mt-6 h-12 rounded-xl bg-accent-black text-base font-medium text-white hover:bg-accent-black/90 btn-press"
-                onClick={() => {
-                  setStep("details");
-                  setGenerationError(null);
-                  setGenerationInfo(null);
-                }}
+                className="h-14 w-full rounded-xl bg-accent-black text-base font-semibold text-white hover:bg-accent-black/90 btn-press"
+                onClick={() => router.push("/app/sohbetler")}
               >
-                Tekrar Dene
+                <MessageCircle className="mr-2 h-5 w-5" />
+                Uzmanla İletişime Geç
               </Button>
-            </>
-          ) : (
+            </div>
+          )}
+
+          {/* ── 3. Stil (Dynamic) ── */}
+          {!isIklimlendirme && (
             <>
-              <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-3xl border border-border-light bg-white shadow-sm">
-                <Loader2 className="h-8 w-8 animate-spin text-text-primary" />
+              <div>
+                <p className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
+                  Stil
+                </p>
+                {availableStyles.length > 0 ? (
+                  <div className="-mx-4 px-4 md:mx-0 md:px-0">
+                    <div className="flex gap-2.5 overflow-x-auto pb-2 scrollbar-none md:flex-wrap md:overflow-visible">
+                      {availableStyles.map((s: StyleOption) => (
+                        <button
+                          key={s.id}
+                          onClick={() => setStyle(s.id)}
+                          className={cn(
+                            "flex w-[90px] shrink-0 flex-col items-center gap-2 rounded-2xl border p-3 transition-all btn-press md:w-[100px]",
+                            style === s.id
+                              ? "border-2 border-accent-black bg-selected-bg"
+                              : "border border-border-light bg-white hover:border-text-tertiary"
+                          )}
+                        >
+                          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-warm-bg">
+                            <s.icon className="h-4 w-4 text-text-primary" />
+                          </div>
+                          <span className="text-center text-[11px] font-medium leading-tight text-text-primary">
+                            {s.label}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-border-light bg-white p-6 text-center">
+                    <p className="text-xs text-text-tertiary">
+                      Mekan ve hizmet tipi seçin
+                    </p>
+                  </div>
+                )}
               </div>
-              <h2 className="text-xl font-semibold text-text-primary">
-                Tasarım oluşturuluyor...
-              </h2>
-              <p className="mt-2 text-sm text-text-secondary">
-                {generationInfo
-                  ? `Tahmini süre: ~${generationInfo.estimatedTime} saniye`
-                  : "Bu işlem birkaç saniye sürebilir."}
-              </p>
-              <p className="mt-1 text-xs text-text-tertiary">
-                Geçen süre: {elapsedSeconds}s
-              </p>
-              <div className="mt-6 h-1.5 w-48 overflow-hidden rounded-full bg-border-light">
-                <div
-                  className="h-full rounded-full bg-accent-black transition-all duration-1000 ease-linear"
-                  style={{
-                    width: generationInfo
-                      ? `${Math.min((elapsedSeconds / generationInfo.estimatedTime) * 100, 95)}%`
-                      : "50%",
-                  }}
-                />
-              </div>
-              {generationInfo && (
-                <div className="mt-6 rounded-xl border border-border-light bg-white px-4 py-3 text-center">
-                  <p className="text-[11px] text-text-tertiary">
-                    Model: {generationInfo.modelUsed.split("/").pop()}
-                  </p>
+
+              {/* ═══ ADVANCED MODE EXTRAS ═══ */}
+              {tab === "advanced" && (
+                <div className="space-y-5">
+                  {/* Tool selection */}
+                  {availableTools.length > 0 && (
+                    <div>
+                      <p className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
+                        Araç
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {availableTools.map((t) => (
+                          <button
+                            key={t.id}
+                            onClick={() => setTool(t.id)}
+                            className={cn(
+                              "inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium transition-all btn-press",
+                              tool === t.id
+                                ? "border-accent-black bg-accent-black text-white"
+                                : "border-border-light bg-white text-text-primary hover:border-text-tertiary"
+                            )}
+                          >
+                            <t.icon className="h-4 w-4" />
+                            {t.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Quick tags */}
+                  {quickTags.length > 0 && (
+                    <div>
+                      <p className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
+                        Hızlı Etiketler
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {quickTags.map((tag) => (
+                          <button
+                            key={tag}
+                            onClick={() => toggleTag(tag)}
+                            className={cn(
+                              "rounded-lg border px-3 py-1.5 text-xs font-medium transition-all btn-press",
+                              selectedTags.includes(tag)
+                                ? "border-accent-black bg-accent-black text-white"
+                                : "border-border-light bg-white text-text-primary hover:border-text-tertiary"
+                            )}
+                          >
+                            {tag}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Free text prompt */}
+                  <div>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
+                      Tasarım Promptu
+                    </p>
+                    <textarea
+                      value={freeText}
+                      onChange={(e) => setFreeText(e.target.value)}
+                      placeholder="Tasarımınızı detaylandırın... Örn: Geniş pencereler, açık mutfak, bahçeye bakan teras"
+                      rows={4}
+                      className="w-full rounded-xl border border-border-light bg-white px-4 py-3 text-sm text-text-primary placeholder:text-text-tertiary focus:border-accent-black focus:outline-none focus:ring-2 focus:ring-accent-black/20 resize-none"
+                    />
+                  </div>
+
+                  {/* AI Prompt Enrich button (placeholder) */}
+                  <button
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-border-light bg-white py-2.5 text-xs font-medium text-text-secondary hover:border-text-tertiary hover:text-text-primary transition-colors btn-press"
+                    title="Yakında"
+                    disabled
+                  >
+                    <Wand2 className="h-3.5 w-3.5" />
+                    AI ile Prompt Zenginleştir
+                    <span className="rounded bg-border-light px-1.5 py-0.5 text-[10px] text-text-tertiary">yakında</span>
+                  </button>
+
+                  {/* Negative prompt (collapsible) */}
+                  <div>
+                    <button
+                      onClick={() => setShowNegative(!showNegative)}
+                      className="flex items-center gap-1.5 text-xs font-medium text-text-tertiary hover:text-text-secondary transition-colors"
+                    >
+                      {showNegative ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                      Olmasın (Negative Prompt)
+                    </button>
+                    {showNegative && (
+                      <textarea
+                        value={negativePrompt}
+                        onChange={(e) => setNegativePrompt(e.target.value)}
+                        placeholder="Olmasını istemediğiniz öğeler... Örn: karanlık, dar alan, eski mobilya"
+                        rows={2}
+                        className="mt-2 w-full rounded-xl border border-border-light bg-white px-4 py-3 text-sm text-text-primary placeholder:text-text-tertiary focus:border-accent-black focus:outline-none focus:ring-2 focus:ring-accent-black/20 resize-none"
+                      />
+                    )}
+                  </div>
+
+                  {/* Prompt preview */}
+                  {previewPrompt && (
+                    <div className="rounded-xl bg-[#F0EDE8] p-4">
+                      <div className="mb-2 flex items-center gap-2">
+                        <ClipboardList className="h-3.5 w-3.5 text-text-tertiary" />
+                        <span className="text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
+                          Oluşan Prompt
+                        </span>
+                      </div>
+                      <p className="text-xs leading-relaxed text-text-secondary font-mono wrap-break-word">
+                        &ldquo;{previewPrompt}&rdquo;
+                      </p>
+                      {modelInfo && (
+                        <p className="mt-2 text-[10px] text-text-tertiary">
+                          Model: {modelInfo.modelId.split("/").pop()} (~{estimateProcessingTime(modelInfo)}s, ${calculateModelCost(modelInfo).toFixed(3)})
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
+              )}
+
+              {/* ═══ GENERATE BUTTON ═══ */}
+              <Button
+                className="h-14 w-full rounded-xl bg-accent-black text-base font-semibold text-white hover:bg-accent-black/90 btn-press disabled:opacity-40"
+                disabled={!canGenerate}
+                onClick={handleGenerate}
+              >
+                <Sparkles className="mr-2 h-5 w-5" />
+                Tasarımı Başlat
+              </Button>
+
+              {!photoFile && category && service && style && (
+                <p className="text-center text-xs text-text-tertiary">
+                  Devam etmek için fotoğraf yükleyin
+                </p>
               )}
             </>
           )}
         </div>
-      )}
+      </div>
     </div>
   );
 }
