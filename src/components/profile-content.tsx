@@ -13,7 +13,10 @@ import {
   Shield,
   HelpCircle,
   Star,
+  Video,
+  Building2,
 } from "lucide-react";
+import Link from "next/link";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 
 export function ProfileContent({ user }: { user: SupabaseUser | null }) {
@@ -117,6 +120,52 @@ export function ProfileContent({ user }: { user: SupabaseUser | null }) {
             Plan
           </p>
         </div>
+      </div>
+
+      {/* Supplier Studio */}
+      <div className="mb-6 overflow-hidden rounded-2xl border border-border-light bg-white shadow-sm">
+        <Link href="/app/firma/studio">
+          <div className="flex items-center gap-4 px-5 py-4 transition-colors hover:bg-warm-bg/50 btn-press border-b border-border-light">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent-black">
+              <Video className="h-4 w-4 text-white" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-text-primary">
+                Supplier Studio
+              </p>
+              <p className="text-xs text-text-tertiary">Video üret, portföyünü yönet</p>
+            </div>
+            <ChevronRight className="h-4 w-4 shrink-0 text-text-tertiary" />
+          </div>
+        </Link>
+        <Link href="/app/firma/krediler">
+          <div className="flex items-center gap-4 px-5 py-4 transition-colors hover:bg-warm-bg/50 btn-press border-b border-border-light">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-warm-bg">
+              <Building2 className="h-4 w-4 text-text-tertiary" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-text-primary">
+                Krediler
+              </p>
+              <p className="text-xs text-text-tertiary">Bakiye ve işlem geçmişi</p>
+            </div>
+            <ChevronRight className="h-4 w-4 shrink-0 text-text-tertiary" />
+          </div>
+        </Link>
+        <Link href="/app/firma/videolar">
+          <div className="flex items-center gap-4 px-5 py-4 transition-colors hover:bg-warm-bg/50 btn-press">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-warm-bg">
+              <CreditCard className="h-4 w-4 text-text-tertiary" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-text-primary">
+                Videolarım
+              </p>
+              <p className="text-xs text-text-tertiary">Portföy galerin</p>
+            </div>
+            <ChevronRight className="h-4 w-4 shrink-0 text-text-tertiary" />
+          </div>
+        </Link>
       </div>
 
       {/* Menü */}

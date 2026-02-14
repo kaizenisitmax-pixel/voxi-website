@@ -9,10 +9,13 @@ import {
   MessageCircle,
   UserCircle,
   LogOut,
-  Settings,
+  Video,
+  Building2,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useState } from "react";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 
 const tabs = [
@@ -20,6 +23,12 @@ const tabs = [
   { href: "/app/kutuphane", icon: FolderOpen, label: "Kütüphane" },
   { href: "/app/sohbetler", icon: MessageCircle, label: "Sohbetler" },
   { href: "/app/profil", icon: UserCircle, label: "Profil" },
+];
+
+const supplierLinks = [
+  { href: "/app/firma/studio", icon: Video, label: "Video Studio" },
+  { href: "/app/firma/videolar", icon: FolderOpen, label: "Videolarım" },
+  { href: "/app/firma/krediler", icon: Building2, label: "Krediler" },
 ];
 
 export function AppShell({
@@ -32,6 +41,7 @@ export function AppShell({
   const pathname = usePathname();
   const router = useRouter();
   const supabaseRef = useRef<ReturnType<typeof createClient> | null>(null);
+  const [supplierOpen, setSupplierOpen] = useState(pathname.startsWith("/app/firma"));
 
   // user null ise login'e yönlendir
   useEffect(() => {
@@ -102,6 +112,43 @@ export function AppShell({
               </Link>
             );
           })}
+
+          {/* Supplier Studio Section */}
+          <div className="pt-3">
+            <button
+              onClick={() => setSupplierOpen(!supplierOpen)}
+              className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-text-tertiary hover:text-text-secondary transition-colors"
+            >
+              <span>Supplier Studio</span>
+              {supplierOpen ? (
+                <ChevronUp className="h-3.5 w-3.5" />
+              ) : (
+                <ChevronDown className="h-3.5 w-3.5" />
+              )}
+            </button>
+            {supplierOpen && (
+              <div className="mt-0.5 space-y-0.5">
+                {supplierLinks.map((link) => {
+                  const active = pathname === link.href;
+                  return (
+                    <Link key={link.href} href={link.href}>
+                      <div
+                        className={cn(
+                          "flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors",
+                          active
+                            ? "bg-warm-bg text-text-primary"
+                            : "text-text-secondary hover:bg-warm-bg/60 hover:text-text-primary"
+                        )}
+                      >
+                        <link.icon className={cn("h-[18px] w-[18px]", active ? "text-text-primary" : "text-text-tertiary")} />
+                        {link.label}
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </nav>
 
         {/* Sidebar Footer */}
