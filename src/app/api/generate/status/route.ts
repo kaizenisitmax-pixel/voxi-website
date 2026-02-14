@@ -48,7 +48,7 @@ export async function GET(request: Request) {
     // Check Replicate status
     const response = await fetch(`${REPLICATE_API_URL}/${predictionId}`, {
       headers: {
-        Authorization: `Token ${REPLICATE_API_TOKEN}`,
+        Authorization: `Bearer ${REPLICATE_API_TOKEN}`,
       },
     });
 

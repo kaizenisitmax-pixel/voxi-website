@@ -18,7 +18,8 @@ import {
   REPLICATE_MODELS,
 } from "@/lib/replicate-model-mapping";
 
-const REPLICATE_API_URL = "https://api.replicate.com/v1/predictions";
+const REPLICATE_PREDICTIONS_URL = "https://api.replicate.com/v1/predictions";
+const REPLICATE_MODELS_URL = "https://api.replicate.com/v1/models";
 
 export async function POST(request: Request) {
   try {
@@ -89,18 +90,21 @@ export async function POST(request: Request) {
     console.log("isFlux:", isFlux);
 
     let replicateBody: Record<string, unknown>;
+    let replicateEndpoint: string;
 
     if (isFlux) {
       // ─── FLUX PATH (yapı) ───
-      // flux-canny-pro: control_image (URL), prompt, guidance, num_inference_steps
+      // flux-canny-pro / flux-depth-pro: model-based endpoint (no version hash needed)
+      // Endpoint: /v1/models/{owner}/{name}/predictions
       const guidance = creativityParams.guidance;
       const steps = finalModel.steps || 35;
 
       console.log("Flux guidance:", guidance, "| Steps:", steps);
       console.log("Control image URL:", originalImageUrl);
 
+      replicateEndpoint = `${REPLICATE_MODELS_URL}/${finalModel.modelId}/predictions`;
+
       replicateBody = {
-        ...(finalModel.version ? { version: finalModel.version } : { model: finalModel.modelId }),
         input: {
           prompt,
           control_image: originalImageUrl,
@@ -114,7 +118,8 @@ export async function POST(request: Request) {
       };
     } else {
       // ─── CONTROLNET PATH (dekorasyon) ───
-      // adirik/interior-design: image (base64), prompt, strength, scale, ddim_steps
+      // adirik/interior-design: version-based endpoint
+      // Endpoint: /v1/predictions (requires version hash)
       const arrayBuffer = await imageFile.arrayBuffer();
       const base64 = Buffer.from(arrayBuffer).toString("base64");
       const dataUrl = `data:${imageFile.type || "image/jpeg"};base64,${base64}`;
@@ -125,6 +130,8 @@ export async function POST(request: Request) {
       const resolution = finalModel.resolution || 768;
 
       console.log("Controlnet strength:", strength, "| Scale:", scale, "| Steps:", steps);
+
+      replicateEndpoint = REPLICATE_PREDICTIONS_URL;
 
       replicateBody = {
         version: finalModel.version || REPLICATE_MODELS.interior_design.version,
@@ -146,14 +153,16 @@ export async function POST(request: Request) {
       };
     }
 
+    console.log("Endpoint:", replicateEndpoint);
     console.log("=========================");
 
     // 7. Call Replicate API
-    const replicateResponse = await fetch(REPLICATE_API_URL, {
+    const replicateResponse = await fetch(replicateEndpoint, {
       method: "POST",
       headers: {
-        Authorization: `Token ${REPLICATE_API_TOKEN}`,
+        Authorization: `Bearer ${REPLICATE_API_TOKEN}`,
         "Content-Type": "application/json",
+        Prefer: "wait",
       },
       body: JSON.stringify(replicateBody),
     });
