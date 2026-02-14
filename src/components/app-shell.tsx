@@ -52,10 +52,15 @@ export function AppShell({
     router.push("/");
   };
 
+  // User yoksa hiçbir şey render etme (redirect beklenirken)
+  if (!user) {
+    return null;
+  }
+
   const displayName =
-    user?.user_metadata?.full_name ||
-    user?.email?.split("@")[0] ||
-    user?.phone ||
+    user.user_metadata?.full_name ||
+    user.email?.split("@")[0] ||
+    user.phone ||
     "Kullanıcı";
 
   const isActiveTab = (href: string) => {
