@@ -12,7 +12,7 @@ import {
   Settings,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useRef } from "react";
+import { useRef, useEffect } from "react";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 
 const tabs = [
@@ -26,12 +26,19 @@ export function AppShell({
   user,
   children,
 }: {
-  user: SupabaseUser;
+  user: SupabaseUser | null;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
   const router = useRouter();
   const supabaseRef = useRef<ReturnType<typeof createClient> | null>(null);
+
+  // user null ise login'e yönlendir
+  useEffect(() => {
+    if (!user) {
+      router.replace("/giris");
+    }
+  }, [user, router]);
 
   function getSupabase() {
     if (!supabaseRef.current) {
@@ -46,9 +53,9 @@ export function AppShell({
   };
 
   const displayName =
-    user.user_metadata?.full_name ||
-    user.email?.split("@")[0] ||
-    user.phone ||
+    user?.user_metadata?.full_name ||
+    user?.email?.split("@")[0] ||
+    user?.phone ||
     "Kullanıcı";
 
   const isActiveTab = (href: string) => {
